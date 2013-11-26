@@ -7,40 +7,17 @@ import (
 const (
 	SuperSize    = 32 * 1024
 	IdxEntrySize = 16
-	FstMainIdx   = 3
-	MaxMainIdx   = 4096 - 1
+	MinMIdx      = 3
+	MaxMIdx      = 4096 - 1
 )
 
 type Super struct {
-	MainIdxSize uint32
-	Id          uint32
-	DatOff      uint64
-	DatSize     uint64
-	IdxNum      uint32
-	IdxMap      [MaxMainIdx - FstMainIdx]uint64
-}
-
-func byteTouint64(buf []byte) uint64 {
-	var res uint64
-	for i, v := range buf {
-		if i >= 8 {
-			break
-		}
-		res <<= 8
-		res += uint64(v)
-	}
-	return res
-}
-
-func uint64Tobyte(v uint64) []byte {
-	buf := make([]byte, 8)
-	for i := 7; i >= 0; i-- {
-    buf[i] = byte(v)
-    if v >>= 8; v == 0 {
-      break
-    }
-	}
-	return buf
+	MIdxSizeBit uint16
+	SiteGrp     uint32
+	ImgLen      uint64
+	ImgSize     uint64
+	NextObjId   uint32
+	MIdx        [MaxMIdx - MinMIdx + 1]uint64
 }
 
 func NewSuper(buf []byte) *Super {
@@ -48,26 +25,25 @@ func NewSuper(buf []byte) *Super {
 		return nil
 	}
 
-	if buf[0] != 'M' || buf[1] != 'F' || buf[2] != 'S' {
+	if string(buf[0:3]) != "MFS" {
 		return nil
 	}
 	res := new(Super)
 
-	res.MainIdxSize = 1 << byteTouint64(buf[3:4])
-	res.Id = uint32(byteTouint64(buf[4:8]))
-	res.DatOff = byteTouint64(buf[8:14])
-	res.DatSize = byteTouint64(buf[14:20])
-	if res.DatOff < res.DatSize {
+	res.MIdxSizeBit = uint16(byteTouint64(buf[3:4]))
+	res.SiteGrp = uint32(byteTouint64(buf[4:8]))
+	res.ImgLen = byteTouint64(buf[8:14])
+	res.ImgSize = byteTouint64(buf[14:20])
+	if res.ImgLen > res.ImgSize {
 		return nil
 	}
 
-	res.IdxNum = uint32(byteTouint64(buf[20:24]))
-	if res.IdxNum < FstMainIdx*res.MainIdxSize {
+	if res.NextObjId = uint32(byteTouint64(buf[20:24])); res.NextObjId < MinMIdx*(1<<res.MIdxSizeBit) {
 		return nil
 	}
 
-	for i, pos := uint32(FstMainIdx), 24; i < res.IdxNum/res.MainIdxSize; i, pos = i+1, pos+4 {
-		res.IdxMap[i-FstMainIdx] = byteTouint64(buf[pos : pos+4])
+	for i, pos := uint32(MinMIdx), 24; i <= res.NextObjId/(1<<res.MIdxSizeBit); i, pos = i+1, pos+8 {
+		res.MIdx[i-MinMIdx] = byteTouint64(buf[pos : pos+8])
 	}
 
 	return res
@@ -81,12 +57,36 @@ func NewSuperFromFile(f *os.File) *Super {
 	return NewSuper(buf)
 }
 
-func (s *Super) UpdateDatOff(f *os.File) {
+func (s *Super) GetIdxEntryOff(objId uint32) uint64 {
+	if objId >= s.NextObjId || objId < MinMIdx*(1<<s.MIdxSizeBit) {
+		return 0
+	}
+	return s.MIdx[objId/(1<<s.MIdxSizeBit)] + uint64(objId%(1<<s.MIdxSizeBit))*IdxEntrySize
 }
 
-func (s *Super) UpdateIdxNum(f *os.File) {
+func (s *Super) UpdateImgLen(f *os.File, ObjSize uint64) {
+	s.ImgLen += ObjSize
+	f.Seek(8, 0)
+	f.Write(uint64Tobyte(s.ImgLen)[2:])
 }
 
-func (s *Super) GetIdxOff(idx uint32) uint64 {
-	return uint64(idx * IdxEntrySize)
+func (s *Super) UpdateNextObjId(f *os.File) {
+	s.NextObjId++
+	f.Seek(20, 0)
+	f.Write(uint64Tobyte(uint64(s.NextObjId))[4:])
+}
+
+func (s *Super) Flush(f *os.File) {
+	buf := make([]byte, SuperSize)
+	n := copy(buf, []byte("MFS"))
+	n += copy(buf[n:], uint64Tobyte(uint64(s.MIdxSizeBit))[7:])
+	n += copy(buf[n:], uint64Tobyte(uint64(s.SiteGrp))[4:])
+	n += copy(buf[n:], uint64Tobyte(s.ImgLen)[2:])
+	n += copy(buf[n:], uint64Tobyte(s.ImgSize)[2:])
+	n += copy(buf[n:], uint64Tobyte(uint64(s.NextObjId))[4:])
+	for _, v := range s.MIdx {
+		n += copy(buf[n:], uint64Tobyte(v))
+	}
+	f.Seek(0, 0)
+	f.Write(buf)
 }
