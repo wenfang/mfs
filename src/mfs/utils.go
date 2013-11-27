@@ -1,6 +1,6 @@
 package mfs
 
-func byteTouint64(buf []byte) uint64 {
+func ByteToUint64(buf []byte) uint64 {
 	var res uint64
 	for i, v := range buf {
 		if i >= 8 {
@@ -12,7 +12,7 @@ func byteTouint64(buf []byte) uint64 {
 	return res
 }
 
-func uint64Tobyte(v uint64) []byte {
+func Uint64ToByte(v uint64) []byte {
 	buf := make([]byte, 8)
 	for i := 7; i >= 0; i-- {
 		buf[i] = byte(v)

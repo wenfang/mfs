@@ -5,70 +5,68 @@ import (
 	"os"
 )
 
+const (
+	W_PUTOBJ = iota
+	W_UPDATEOBJ
+	W_DELOBJ
+)
+
 type wdata struct {
-	imgOff int64
-	buf    io.Reader
-	datLen int64
+	wtype  uint16
+	objId  uint32
+	objLen uint64
+	objOff uint64
+	src    io.Reader
 	fin    chan string
 }
 
 type Img struct {
-	Fname string
-	fr    *os.File
+	fname string
 	fw    *os.File
+	fr    *os.File
 	wchan chan wdata
 	s     *Super
 }
 
-func newWriteRoutine(fname string) chan wdata {
-	fw, err := os.OpenFile(fname, os.O_RDWR, 0666)
-	if err != nil {
-		return nil
-	}
+func (img *Img) putObj(objLen uint64, src io.Reader) {
+  // get objId
+  objId := img.s.NextObjId
+  img.s.NextObjId++
+  // write idx
+  idxOff := img.s.MIdx[objId/MIdxSize] + uint64(objId%MIdxSize)*IdxEntrySize
+  buf := make([]byte, IdxEntrySize)
+  copy(buf[8:14], Uint64ToByte(objLen)[2:])
+  img.fw.Seek(int64(idxOff), 0)
+  img.fw.Write(buf)
+}
 
-	wchan := make(chan wdata, 512)
-	go func() {
-		for v := range wchan {
-      fw.Seek(v.imgOff, 0)
-      io.CopyN(fw, v.buf, v.datLen)
-      v.fin <- "OK"
+func (img *Img) wRoutine() {
+	defer img.fw.Close()
+
+	for v := range img.wchan {
+		switch v.wtype {
+		case W_PUTOBJ:
+			img.putObj(v.objLen, v.src)
 		}
-	}()
-	return wchan
+	}
 }
 
 func NewImg(fname string) *Img {
 	var err error
 	img := new(Img)
-	img.Fname = fname
+	img.fname = fname
 
 	if img.fr, err = os.Open(fname); err != nil {
 		return nil
 	}
-
 	if img.fw, err = os.OpenFile(fname, os.O_RDWR, 0666); err != nil {
 		return nil
 	}
+	img.wchan = make(chan wdata, 512)
+
+	go img.wRoutine()
 
 	return img
-}
-
-func (img *Img) InitSuper(SiteGrp uint32) bool {
-	fi, err := os.Stat(img.Fname)
-	if err != nil {
-		return false
-	}
-
-	buf := make([]byte, SuperSize)
-	n := copy(buf, []byte("MJFS"))
-	n += copy(buf[n:], uint64Tobyte(uint64(SiteGrp))[4:])
-	n += copy(buf[n:], uint64Tobyte(SuperSize + MIdxSize*IdxEntrySize)[2:])
-	n += copy(buf[n:], uint64Tobyte(uint64(fi.Size()))[2:])
-	n += copy(buf[n:], uint64Tobyte(uint64(MinMIdx * MIdxSize))[4:])
-
-	img.fw.Seek(0, 0)
-	img.fw.Write(buf)
-	return true
 }
 
 func (img *Img) LoadSuper() bool {
@@ -77,4 +75,11 @@ func (img *Img) LoadSuper() bool {
 		return false
 	}
 	return true
+}
+
+func (img *Img) PutObj(objLen uint64, src io.Reader) {
+	img.wchan <- wdata{W_PUTOBJ, 0, objLen, 0, src, nil}
+}
+
+func (img *Img) UpdateObj(objId uint64, objOff, objLen uint64, src io.Reader) {
 }
