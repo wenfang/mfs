@@ -24,11 +24,11 @@ func main() {
 		fmt.Printf("[ERROR] Open %s Failed\n", fname)
 		return
 	}
-  defer fw.Close()
+	defer fw.Close()
 
 	fi, err := fw.Stat()
 	if err != nil {
-    fmt.Printf("[ERROR] Stat %s Failed\n", fname)
+		fmt.Printf("[ERROR] Stat %s Failed\n", fname)
 		return
 	}
 
@@ -38,8 +38,8 @@ func main() {
 	n += copy(buf[n:], mfs.Uint64ToByte(mfs.SuperSize + mfs.MIdxSize*mfs.IdxEntrySize)[2:])
 	n += copy(buf[n:], mfs.Uint64ToByte(uint64(fi.Size()))[2:])
 	n += copy(buf[n:], mfs.Uint64ToByte(uint64(mfs.MinMIdx * mfs.MIdxSize))[4:])
-  copy(buf[n:], mfs.Uint64ToByte(mfs.SuperSize))
+	copy(buf[n:], mfs.Uint64ToByte(mfs.SuperSize))
 
-  fw.Seek(0,0)
-  fw.Write(buf)
+	fw.Seek(0, 0)
+	fw.Write(buf)
 }

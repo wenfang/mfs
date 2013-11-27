@@ -2,12 +2,11 @@ package main
 
 import (
 	"bufio"
-	"encoding/binary"
 	"fmt"
 	"io"
 	"log"
+	"mfs"
 	"net"
-	"os"
 	"strconv"
 	"strings"
 )
@@ -17,95 +16,26 @@ const (
 	datFlagBit = 8
 )
 
+type cFun func(uint64, io.ReadWriter)
 
-type WriteData struct {
-	c      net.Conn
-	datLen int64
-	fin    chan string
-}
-
-type cFun func(net.Conn, uint64) string
-
-var site int64
-var wchan chan WriteData
 var cmdFun map[string]cFun
+var img *mfs.Img
 
-func getCmd(c net.Conn, id uint64) string {
-	ri, err := os.Open("idx")
-	if err != nil {
-		log.Println(err)
-		return "+E Open idx Error\r\n"
-	}
-	defer ri.Close()
+func getCmd(objId uint64, c io.ReadWriter) {
+  entry := img.GetObjIdxEntry(objId)
+  if entry == nil {
+    io.WriteString(c, fmt.Sprintf("+E No Obj Found\r\n"))
+    return
+  }
 
-	buf := make([]byte, 16)
-	idxOff := int64((id & 0x00000000FFFFFFFF) << idxSizeBit)
-	if _, err = ri.ReadAt(buf, idxOff); err != nil {
-		log.Println(err, idxOff)
-		return "+E Read idx Error\r\n"
-	}
-
-	datOff, _ := binary.Varint(buf[0:8])
-	datLen, _ := binary.Varint(buf[8:])
-	datLen >>= datFlagBit
-
-	rd, err := os.Open("data")
-	if err != nil {
-		log.Println(err)
-		return "+E Open Data Error\r\n"
-	}
-	defer rd.Close()
-	rd.Seek(datOff, 0)
-
-	io.WriteString(c, fmt.Sprintf("+S %d\r\n", datLen))
-	if _, err = io.CopyN(c, rd, datLen); err != nil {
-		log.Println(err)
-	}
-
-	return ""
+  io.WriteString(c, fmt.Sprintf("+S %d\r\n", entry.ObjLen))
+	img.GetObj(entry, c)
+	return
 }
 
-func putCmd(c net.Conn, size uint64) string {
-	fin := make(chan string)
-	wchan <- WriteData{c, int64(size), fin}
-	return <-fin
-}
-
-func delCmd(c net.Conn, id uint64) string {
-	return ""
-}
-
-func putHandle(wi, wd *os.File) {
-	var idxOff, datOff int64
-	var err error
-
-	buf := make([]byte, 16)
-
-	for v := range wchan {
-		if idxOff, err = wi.Seek(0, 1); err != nil {
-			v.fin <- "+E Idx Offset Read Error"
-			continue
-		}
-
-		if datOff, err = wd.Seek(0, 1); err != nil {
-			v.fin <- "+E Data Offset Read Error"
-			continue
-		}
-		// write dat
-		if _, err = io.CopyN(wd, v.c, v.datLen); err != nil {
-			v.fin <- "+E Data Write Error"
-			continue
-		}
-		// write idx
-		binary.PutVarint(buf, datOff)
-		binary.PutVarint(buf[8:], v.datLen<<datFlagBit)
-		if _, err := wi.Write(buf); err != nil {
-			v.fin <- "+E Idx Write Error"
-			continue
-		}
-
-		v.fin <- fmt.Sprintf("+S %d\r\n", (site<<32)+(idxOff>>idxSizeBit))
-	}
+func putCmd(objLen uint64, c io.ReadWriter) {
+	id := img.PutObj(objLen, c)
+  io.WriteString(c, fmt.Sprintf("+S %d\r\n", id))
 }
 
 func mainHandle(c net.Conn) {
@@ -133,24 +63,19 @@ func mainHandle(c net.Conn) {
 		return
 	}
 
-	io.WriteString(c, cmdFun[fields[0]](c, arg))
+	cmdFun[fields[0]](arg, c)
 }
 
 func init() {
-	site = 1
-	wchan = make(chan WriteData, 512)
 	cmdFun = map[string]cFun{
 		"get": getCmd,
 		"put": putCmd,
-		"del": delCmd,
 	}
 
-	var wfile *os.File
-	if wfile, err := os.OpenFile("dsk.img", os.O_RDWR, 0666); err != nil {
-		log.Fatal(err)
+	if img = mfs.NewImg("img"); img == nil {
+		log.Fatal("Open img Error")
 	}
-
-	go putHandle(wfile)
+	img.LoadSuper()
 }
 
 func main() {

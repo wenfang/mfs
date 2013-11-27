@@ -50,11 +50,11 @@ func (img *Img) putObj(objLen uint64, src io.Reader) uint32 {
 	img.fw.Seek(int64(imgPos), 0)
 	buf = make([]byte, ObjHeadSize)
 	n := copy(buf, []byte("OSTA"))
-  n += copy(buf[n:], Uint64ToByte(uint64(objId))[4:])
-  n += copy(buf[n:], Uint64ToByte(objLen + ObjHeadSize + ObjTailSize)[4:])
-  n += 2
-  n += copy(buf[n:], Uint64ToByte(objLen)[4:])
-  img.fw.Write(buf)
+	n += copy(buf[n:], Uint64ToByte(uint64(objId))[4:])
+	n += copy(buf[n:], Uint64ToByte(objLen + ObjHeadSize + ObjTailSize)[4:])
+	n += 2
+	n += copy(buf[n:], Uint64ToByte(objLen)[4:])
+	img.fw.Write(buf)
 	io.CopyN(img.fw, src, int64(objLen))
 
 	return objId
@@ -97,15 +97,21 @@ func (img *Img) LoadSuper() bool {
 	return true
 }
 
+func (img *Img) GetObjIdxEntry(objId uint64) *IdxEntry {
+  if objId < MinMIdx * MIdxSize || objId >= uint64(img.s.NextObjId) {
+    return nil
+  }
+	idxOff := img.s.MIdx[objId/MIdxSize-MinMIdx] + uint64(objId%MIdxSize)*IdxEntrySize
+	return NewIdxEntry(img.fr, idxOff)
+}
+
+func (img *Img) GetObj(entry *IdxEntry, dst io.Writer) {
+	img.fr.Seek(int64(entry.ObjPos+ObjHeadSize), 0)
+	io.CopyN(dst, img.fr, int64(entry.ObjLen))
+}
+
 func (img *Img) PutObj(objLen uint64, src io.Reader) uint32 {
 	fin := make(chan uint32)
 	img.wchan <- wdata{W_PUTOBJ, 0, objLen, 0, src, fin}
 	return <-fin
-}
-
-func (img *Img) GetObj(objId uint64, dst io.Writer) {
-	idxOff := img.s.MIdx[objId/MIdxSize-MinMIdx] + uint64(objId%MIdxSize)*IdxEntrySize
-	entry := NewIdxEntry(img.fr, idxOff)
-	img.fr.Seek(int64(entry.ObjPos+ObjHeadSize), 0)
-  io.CopyN(dst, img.fr, int64(entry.ObjLen))
 }
