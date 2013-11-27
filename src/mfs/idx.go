@@ -11,8 +11,10 @@ type IdxEntry struct {
 	ObjFlag uint16
 }
 
-func newIdxEntry(buf []byte) *IdxEntry {
-	if len(buf) != IdxEntrySize {
+func NewIdxEntry(f *os.File, objOff uint64) *IdxEntry {
+	f.Seek(int64(objOff), 0)
+	buf := make([]byte, IdxEntrySize)
+	if _, err := f.Read(buf); err != nil {
 		return nil
 	}
 
@@ -22,18 +24,4 @@ func newIdxEntry(buf []byte) *IdxEntry {
 	entry.ObjLen = ByteToUint64(buf[8:14])
 	entry.ObjFlag = uint16(ByteToUint64(buf[14:16]))
 	return entry
-}
-
-func NewIdxEntry(f *os.File, s *Super, objId uint32) *IdxEntry {
-	if objId >= s.NextObjId || objId < MinMIdx*MIdxSize {
-		return nil
-	}
-	offset := s.MIdx[objId/MIdxSize] + uint64(objId%MIdxSize)*IdxEntrySize
-
-	f.Seek(int64(offset), 0)
-	buf := make([]byte, IdxEntrySize)
-	if _, err := f.Read(buf); err != nil {
-		return nil
-	}
-	return newIdxEntry(buf)
 }

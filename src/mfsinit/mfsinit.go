@@ -9,40 +9,37 @@ import (
 
 func main() {
 	var fname string
-	flag.StringVar(&fname, "f", "", "<Img File Name>")
+	var sitegrp uint64
+	flag.StringVar(&fname, "f", "", "<Img FileName>")
+	flag.Uint64Var(&sitegrp, "s", 0, "<SiteGroup Id>")
 	flag.Parse()
-	if fname == "" {
+	if fname == "" || sitegrp == 0 {
 		fmt.Printf("Usage of %s:\n", os.Args[0])
 		flag.PrintDefaults()
 		return
 	}
 
-	f, err := os.OpenFile(fname, os.O_RDWR, 0666)
+	fw, err := os.OpenFile(fname, os.O_RDWR, 0666)
 	if err != nil {
-		fmt.Println(err)
+		fmt.Printf("[ERROR] Open %s Failed\n", fname)
 		return
 	}
-	defer f.Close()
+  defer fw.Close()
 
-	fi, err := f.Stat()
+	fi, err := fw.Stat()
 	if err != nil {
-		fmt.Println(err)
+    fmt.Printf("[ERROR] Stat %s Failed\n", fname)
 		return
 	}
 
-	var s mfs.Super
-	s.MIdxSizeBit = 20
-	s.SiteGrp = 0x00010000
-	s.ImgLen = mfs.SuperSize + (1<<s.MIdxSizeBit)*mfs.IdxEntrySize
-	s.ImgSize = uint64(fi.Size())
-	s.NextId = mfs.FstMIdx * (1 << s.MIdxSizeBit)
-  s.MIdx[0] = mfs.SuperSize
-	s.Flush(f)
-  fmt.Println(s.NextId)
-  s.UpdateNextId(f)
-  fmt.Println(s.NextId)
-  s.UpdateNextId(f)
-  fmt.Println(s.NextId)
-  s.UpdateImgLen(f, 6234234)
-  s.UpdateImgLen(f, 234455644)
+	buf := make([]byte, mfs.SuperSize)
+	n := copy(buf, []byte("MJFS"))
+	n += copy(buf[n:], mfs.Uint64ToByte(sitegrp)[4:])
+	n += copy(buf[n:], mfs.Uint64ToByte(mfs.SuperSize + mfs.MIdxSize*mfs.IdxEntrySize)[2:])
+	n += copy(buf[n:], mfs.Uint64ToByte(uint64(fi.Size()))[2:])
+	n += copy(buf[n:], mfs.Uint64ToByte(uint64(mfs.MinMIdx * mfs.MIdxSize))[4:])
+  copy(buf[n:], mfs.Uint64ToByte(mfs.SuperSize))
+
+  fw.Seek(0,0)
+  fw.Write(buf)
 }
