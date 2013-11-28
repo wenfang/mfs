@@ -22,19 +22,19 @@ var cmdFun map[string]cFun
 var img *mfs.Img
 
 func getCmd(objId uint64, c io.ReadWriter) {
-  entry := img.GetObjIdxEntry(uint32(objId))
-  if entry == nil {
+  o := img.GetObj(uint32(objId))
+  if o == nil {
     io.WriteString(c, fmt.Sprintf("+E No Obj Found\r\n"))
     return
   }
+  io.WriteString(c, fmt.Sprintf("+S %d\r\n", o.ObjLen))
 
-  io.WriteString(c, fmt.Sprintf("+S %d\r\n", entry.ObjLen))
-	img.GetObj(entry, c)
+	img.Get(o, c)
 	return
 }
 
 func putCmd(objLen uint64, c io.ReadWriter) {
-	id := img.PutObj(objLen, c)
+	id := img.Put(objLen, c)
   io.WriteString(c, fmt.Sprintf("+S %d\r\n", id))
 }
 

@@ -19,22 +19,47 @@ type Obj struct {
 	CRC32   uint32
 }
 
-func NewObj(f io.ReadSeeker, entry *IdxEntry) *Obj {
+func NewObj(f io.ReadSeeker, Offset int64) *Obj {
+	f.Seek(Offset, 0)
+	buf := make([]byte, ObjHeadSize)
+	if _, err := f.Read(buf); err != nil {
+		return nil
+	}
+
+	if string(buf[0:4]) != "OSTA" {
+		return nil
+	}
+
 	o := new(Obj)
+	o.Offset = Offset
+	o.ObjId = uint32(ByteToUint64(buf[4:8]))
+	o.ObjSize = ByteToUint64(buf[8:14])
+	o.ObjType = uint16(ByteToUint64(buf[14:16]))
+	o.ObjLen = ByteToUint64(buf[16:22])
+	o.ObjFlag = uint16(ByteToUint64(buf[22:24]))
 	return o
+}
+
+func (o *Obj) Retrive(src io.ReadSeeker, dst io.Writer) {
+	src.Seek(o.Offset+ObjHeadSize, 0)
+	io.CopyN(dst, src, int64(o.ObjLen))
 }
 
 func (o *Obj) Store(src io.Reader, dst io.WriteSeeker) {
 	buf := make([]byte, ObjHeadSize)
 	n := copy(buf, []byte("OSTA"))
 	n += copy(buf[n:], Uint64ToByte(uint64(o.ObjId))[4:])
-	n += copy(buf[n:], Uint64ToByte(o.ObjSize)[4:])
+	n += copy(buf[n:], Uint64ToByte(o.ObjSize)[2:])
 	n += copy(buf[n:], Uint64ToByte(uint64(o.ObjType))[6:])
-	n += copy(buf[n:], Uint64ToByte(o.ObjLen)[4:])
+	n += copy(buf[n:], Uint64ToByte(o.ObjLen)[2:])
 	n += copy(buf[n:], Uint64ToByte(uint64(o.ObjFlag))[6:])
-
 	dst.Seek(o.Offset, 0)
 	dst.Write(buf)
 
 	io.CopyN(dst, src, int64(o.ObjLen))
+
+  buf = make([]byte, ObjTailSize)
+  n = copy(buf, []byte("OEND"))
+  n += copy(buf[n:], Uint64ToByte(uint64(o.CRC32))[4:])
+  dst.Write(buf)
 }

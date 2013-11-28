@@ -12,6 +12,10 @@ const (
 	W_DELOBJ
 )
 
+const (
+	ObjBufferLimit = 64 * 1024 * 1024
+)
+
 type wdata struct {
 	wtype  uint16
 	objId  uint32
@@ -85,7 +89,7 @@ func (img *Img) LoadSuper() bool {
 	return true
 }
 
-func (img *Img) GetObjIdxEntry(objId uint32) *IdxEntry {
+func (img *Img) GetIdxEntry(objId uint32) *IdxEntry {
 	offset := img.s.GetIdxEntryOff(objId)
 	if offset == 0 {
 		return nil
@@ -93,12 +97,30 @@ func (img *Img) GetObjIdxEntry(objId uint32) *IdxEntry {
 	return NewIdxEntry(img.fr, offset)
 }
 
-func (img *Img) GetObj(entry *IdxEntry, dst io.Writer) {
-	img.fr.Seek(int64(entry.ObjPos+ObjHeadSize), 0)
-	io.CopyN(dst, img.fr, int64(entry.ObjLen))
+func (img *Img) GetObj(objId uint32) *Obj {
+	entry := img.GetIdxEntry(objId)
+	if entry == nil {
+		return nil
+	}
+
+	o := NewObj(img.fr, int64(entry.ObjPos))
+	if o == nil {
+		return nil
+	}
+	if entry.ObjType != o.ObjType || entry.ObjLen != o.ObjLen || entry.ObjFlag != o.ObjFlag {
+		return nil
+	}
+	return o
 }
 
-func (img *Img) PutObj(objLen uint64, src io.Reader) uint32 {
+func (img *Img) Get(o *Obj, dst io.Writer) {
+	o.Retrive(img.fr, dst)
+}
+
+func (img *Img) Put(objLen uint64, src io.Reader) uint32 {
+	if objLen <= ObjBufferLimit {
+	}
+
 	fin := make(chan uint32)
 	img.wchan <- wdata{W_PUTOBJ, 0, objLen, 0, src, fin}
 	return <-fin
