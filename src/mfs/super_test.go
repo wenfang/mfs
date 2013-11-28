@@ -1,24 +1,29 @@
 package mfs
 
 import (
+	"os"
 	"testing"
 )
 
-var buf []byte
+var f *os.File
 
-func init() {
-	buf = make([]byte, SuperSize)
-	buf[0] = 'M'
-	buf[1] = 'J'
-	buf[2] = 'F'
-	buf[3] = 'S'
-	buf[21] = 0x30
-	buf[30] = 0x80
+func TestInit(t *testing.T) {
+	var err error
+	if f, err = os.OpenFile("img", os.O_RDWR, 0666); err != nil {
+		t.Fatal("Open File Error")
+	}
 }
 
 func TestNewSuper(t *testing.T) {
-	s := newSuper(buf)
+	s := NewSuper(f)
 	if s == nil {
 		t.Fatal("Create Error")
 	}
+
+  s.UpdateImgLen(f, 1000)
+  markImgLen := s.ImgLen
+  s = NewSuper(f)
+  if s.ImgLen != markImgLen {
+    t.Fatal(s.ImgLen, markImgLen)
+  }
 }

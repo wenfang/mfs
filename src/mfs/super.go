@@ -1,15 +1,14 @@
 package mfs
 
 import (
-	"os"
+	"io"
 )
 
 const (
-	SuperSize    = 32 * 1024
-	IdxEntrySize = 16
-	MinMIdx      = 3
-	MaxMIdx      = 4096 - 1
-	MIdxSize     = 1 << 20
+	SuperSize = 32 * 1024
+	MinMIdx   = 3
+	MaxMIdx   = 4096 - 1
+	MIdxSize  = 1 << 20
 )
 
 type Super struct {
@@ -20,10 +19,13 @@ type Super struct {
 	MIdx      [MaxMIdx - MinMIdx + 1]uint64
 }
 
-func newSuper(buf []byte) *Super {
-	if len(buf) < SuperSize {
+func NewSuper(f io.ReadSeeker) *Super {
+	f.Seek(0, 0)
+	buf := make([]byte, SuperSize)
+	if _, err := f.Read(buf); err != nil {
 		return nil
 	}
+
 	if string(buf[0:4]) != "MJFS" {
 		return nil
 	}
@@ -42,22 +44,36 @@ func newSuper(buf []byte) *Super {
 	return s
 }
 
-func NewSuper(f *os.File) *Super {
-	buf := make([]byte, SuperSize)
-	if _, err := f.Read(buf); err != nil {
-		return nil
+// 根据对象ID返回对象索引位置，如果对象ID不合法，返回0
+func (s *Super) GetIdxOff(objId uint32) uint64 {
+	if objId < MinMIdx*MIdxSize || objId >= s.NextObjId {
+		return 0
 	}
-	return newSuper(buf)
+	return s.MIdx[objId/MIdxSize-MinMIdx] + uint64(objId%MIdxSize)*IdxEntrySize
 }
 
-func (s *Super) UpdateImgLen(f *os.File, ObjSize uint64) {
-	s.ImgLen += ObjSize
+func (s *Super) UpdateImgLen(f io.WriteSeeker, objSize uint64) uint64 {
+	oldImgLen := s.ImgLen
+	s.ImgLen += objSize
 	f.Seek(8, 0)
 	f.Write(Uint64ToByte(s.ImgLen)[2:])
+	return oldImgLen
 }
 
-func (s *Super) UpdateNextObjId(f *os.File) {
+func (s *Super) updateMIdx(f io.WriteSeeker, mIdx uint32) {
+	f.Seek(int64(24+mIdx*8), 0)
+	f.Write(Uint64ToByte(s.MIdx[mIdx]))
+}
+
+func (s *Super) UpdateNextObjId(f io.WriteSeeker) uint32 {
+	oldObjId := s.NextObjId
 	s.NextObjId++
 	f.Seek(20, 0)
 	f.Write(Uint64ToByte(uint64(s.NextObjId))[4:])
+
+	if s.NextObjId%MIdxSize == 0 {
+		s.MIdx[s.NextObjId/MIdxSize-MinMIdx] = s.UpdateImgLen(f, MIdxSize*IdxEntrySize)
+		s.updateMIdx(f, s.NextObjId/MIdxSize-MinMIdx)
+	}
+	return oldObjId
 }

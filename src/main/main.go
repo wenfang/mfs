@@ -22,7 +22,7 @@ var cmdFun map[string]cFun
 var img *mfs.Img
 
 func getCmd(objId uint64, c io.ReadWriter) {
-  entry := img.GetObjIdxEntry(objId)
+  entry := img.GetObjIdxEntry(uint32(objId))
   if entry == nil {
     io.WriteString(c, fmt.Sprintf("+E No Obj Found\r\n"))
     return

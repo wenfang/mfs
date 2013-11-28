@@ -12,3 +12,7 @@ type ObjHead struct {
 	ObjLen  uint64
 	objFlag uint16
 }
+
+type ObjTail struct {
+	CRC32 uint32
+}
