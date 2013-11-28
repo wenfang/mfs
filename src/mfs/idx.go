@@ -9,22 +9,22 @@ const (
 )
 
 type IdxEntry struct {
-	IdxOff  uint64
+	Offset  int64
 	ObjPos  uint64
 	ObjType uint16
 	ObjLen  uint64
 	ObjFlag uint16
 }
 
-func NewIdxEntry(f io.ReadSeeker, idxOff uint64) *IdxEntry {
-	f.Seek(int64(idxOff), 0)
+func NewIdxEntry(f io.ReadSeeker, Offset int64) *IdxEntry {
+	f.Seek(Offset, 0)
 	buf := make([]byte, IdxEntrySize)
 	if _, err := f.Read(buf); err != nil {
 		return nil
 	}
 
 	entry := new(IdxEntry)
-	entry.IdxOff = idxOff
+	entry.Offset = Offset
 	entry.ObjPos = ByteToUint64(buf[0:6])
 	entry.ObjType = uint16(ByteToUint64(buf[6:8]))
 	entry.ObjLen = ByteToUint64(buf[8:14])
@@ -38,6 +38,6 @@ func (entry *IdxEntry) Update(f io.WriteSeeker) {
 	copy(buf[6:8], Uint64ToByte(uint64(entry.ObjType))[6:])
 	copy(buf[8:14], Uint64ToByte(entry.ObjLen)[2:])
 	copy(buf[14:16], Uint64ToByte(uint64(entry.ObjFlag))[6:])
-	f.Seek(int64(entry.IdxOff), 0)
+	f.Seek(entry.Offset, 0)
 	f.Write(buf)
 }

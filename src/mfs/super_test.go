@@ -20,10 +20,10 @@ func TestNewSuper(t *testing.T) {
 		t.Fatal("Create Error")
 	}
 
-  s.UpdateImgLen(f, 1000)
-  markImgLen := s.ImgLen
-  s = NewSuper(f)
-  if s.ImgLen != markImgLen {
-    t.Fatal(s.ImgLen, markImgLen)
-  }
+	s.UpdateImgLen(f, 1000)
+	markImgLen := s.ImgLen
+	s = NewSuper(f)
+	if s.ImgLen != markImgLen {
+		t.Fatal(s.ImgLen, markImgLen)
+	}
 }

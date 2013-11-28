@@ -45,14 +45,18 @@ func NewSuper(f io.ReadSeeker) *Super {
 }
 
 // 根据对象ID返回对象索引位置，如果对象ID不合法，返回0
-func (s *Super) GetIdxOff(objId uint32) uint64 {
+func (s *Super) GetIdxEntryOff(objId uint32) int64 {
 	if objId < MinMIdx*MIdxSize || objId >= s.NextObjId {
 		return 0
 	}
-	return s.MIdx[objId/MIdxSize-MinMIdx] + uint64(objId%MIdxSize)*IdxEntrySize
+	return int64(s.MIdx[objId/MIdxSize-MinMIdx]) + int64(objId%MIdxSize)*IdxEntrySize
 }
 
 func (s *Super) UpdateImgLen(f io.WriteSeeker, objSize uint64) uint64 {
+	if s.ImgLen+objSize >= s.ImgSize {
+		return 0
+	}
+
 	oldImgLen := s.ImgLen
 	s.ImgLen += objSize
 	f.Seek(8, 0)
@@ -60,20 +64,22 @@ func (s *Super) UpdateImgLen(f io.WriteSeeker, objSize uint64) uint64 {
 	return oldImgLen
 }
 
-func (s *Super) updateMIdx(f io.WriteSeeker, mIdx uint32) {
-	f.Seek(int64(24+mIdx*8), 0)
-	f.Write(Uint64ToByte(s.MIdx[mIdx]))
-}
-
+// NextObjId加1，返回老的NextObjId，必要时扩展MIdx，出错返回0
 func (s *Super) UpdateNextObjId(f io.WriteSeeker) uint32 {
+	if s.NextObjId > 0xFFFFFFF0 {
+		return 0
+	}
+
 	oldObjId := s.NextObjId
 	s.NextObjId++
 	f.Seek(20, 0)
 	f.Write(Uint64ToByte(uint64(s.NextObjId))[4:])
 
 	if s.NextObjId%MIdxSize == 0 {
-		s.MIdx[s.NextObjId/MIdxSize-MinMIdx] = s.UpdateImgLen(f, MIdxSize*IdxEntrySize)
-		s.updateMIdx(f, s.NextObjId/MIdxSize-MinMIdx)
+		midx := s.NextObjId/MIdxSize - MinMIdx
+		s.MIdx[midx] = s.UpdateImgLen(f, MIdxSize*IdxEntrySize)
+		f.Seek(int64(24+midx*8), 0)
+		f.Write(Uint64ToByte(s.MIdx[midx]))
 	}
 	return oldObjId
 }
