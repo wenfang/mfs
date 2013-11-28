@@ -19,10 +19,10 @@ type Super struct {
 	MIdx      [MaxMIdx - MinMIdx + 1]uint64
 }
 
-func NewSuper(f io.ReadSeeker) *Super {
-	f.Seek(0, 0)
+func NewSuper(src io.ReadSeeker) *Super {
+	src.Seek(0, 0)
 	buf := make([]byte, SuperSize)
-	if _, err := f.Read(buf); err != nil {
+	if _, err := src.Read(buf); err != nil {
 		return nil
 	}
 
@@ -32,10 +32,13 @@ func NewSuper(f io.ReadSeeker) *Super {
 
 	s := new(Super)
 	s.SiteGrp = uint32(ByteToUint64(buf[4:8]))
-	if s.ImgLen, s.ImgSize = ByteToUint64(buf[8:14]), ByteToUint64(buf[14:20]); s.ImgLen > s.ImgSize {
+	s.ImgLen = ByteToUint64(buf[8:14])
+	s.ImgSize = ByteToUint64(buf[14:20])
+	if s.ImgLen > s.ImgSize {
 		return nil
 	}
-	if s.NextObjId = uint32(ByteToUint64(buf[20:24])); s.NextObjId < MinMIdx*MIdxSize {
+	s.NextObjId = uint32(ByteToUint64(buf[20:24]))
+	if s.NextObjId < MinMIdx*MIdxSize {
 		return nil
 	}
 	for i, pos := uint32(MinMIdx), 24; i <= s.NextObjId/MIdxSize; i, pos = i+1, pos+8 {
@@ -45,41 +48,41 @@ func NewSuper(f io.ReadSeeker) *Super {
 }
 
 // 根据对象ID返回对象索引位置，如果对象ID不合法，返回0
-func (s *Super) GetIdxEntryOff(objId uint32) int64 {
+func (s *Super) GetIdxOff(objId uint32) int64 {
 	if objId < MinMIdx*MIdxSize || objId >= s.NextObjId {
 		return 0
 	}
-	return int64(s.MIdx[objId/MIdxSize-MinMIdx]) + int64(objId%MIdxSize)*IdxEntrySize
+	return int64(s.MIdx[objId/MIdxSize-MinMIdx]) + int64(objId%MIdxSize)*IdxSize
 }
 
-func (s *Super) UpdateImgLen(f io.WriteSeeker, objSize uint64) uint64 {
+func (s *Super) UpdateImgLen(f io.WriteSeeker, objSize uint64) (res uint64) {
 	if s.ImgLen+objSize >= s.ImgSize {
-		return 0
+		return
 	}
 
-	oldImgLen := s.ImgLen
+	res = s.ImgLen
 	s.ImgLen += objSize
 	f.Seek(8, 0)
 	f.Write(Uint64ToByte(s.ImgLen)[2:])
-	return oldImgLen
+	return
 }
 
 // NextObjId加1，返回老的NextObjId，必要时扩展MIdx，出错返回0
-func (s *Super) UpdateNextObjId(f io.WriteSeeker) uint32 {
+func (s *Super) UpdateNextObjId(f io.WriteSeeker) (res uint32) {
 	if s.NextObjId > 0xFFFFFFF0 {
-		return 0
+		return
 	}
 
-	oldObjId := s.NextObjId
+	res = s.NextObjId
 	s.NextObjId++
 	f.Seek(20, 0)
 	f.Write(Uint64ToByte(uint64(s.NextObjId))[4:])
 
 	if s.NextObjId%MIdxSize == 0 {
 		midx := s.NextObjId/MIdxSize - MinMIdx
-		s.MIdx[midx] = s.UpdateImgLen(f, MIdxSize*IdxEntrySize)
+		s.MIdx[midx] = s.UpdateImgLen(f, MIdxSize*IdxSize)
 		f.Seek(int64(24+midx*8), 0)
 		f.Write(Uint64ToByte(s.MIdx[midx]))
 	}
-	return oldObjId
+	return
 }

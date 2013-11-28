@@ -19,10 +19,10 @@ type Obj struct {
 	CRC32   uint32
 }
 
-func NewObj(f io.ReadSeeker, Offset int64) *Obj {
-	f.Seek(Offset, 0)
+func NewObj(src io.ReadSeeker, Offset int64) *Obj {
+	src.Seek(Offset, 0)
 	buf := make([]byte, ObjHeadSize)
-	if _, err := f.Read(buf); err != nil {
+	if _, err := src.Read(buf); err != nil {
 		return nil
 	}
 
@@ -58,8 +58,8 @@ func (o *Obj) Store(src io.Reader, dst io.WriteSeeker) {
 
 	io.CopyN(dst, src, int64(o.ObjLen))
 
-  buf = make([]byte, ObjTailSize)
-  n = copy(buf, []byte("OEND"))
-  n += copy(buf[n:], Uint64ToByte(uint64(o.CRC32))[4:])
-  dst.Write(buf)
+	buf = make([]byte, ObjTailSize)
+	n = copy(buf, []byte("OEND"))
+	n += copy(buf[n:], Uint64ToByte(uint64(o.CRC32))[4:])
+	dst.Write(buf)
 }

@@ -26,21 +26,21 @@ type wdata struct {
 }
 
 type Img struct {
-	fname string
-	fr    *os.File
-	wchan chan wdata
-	s     *Super
+	ImgName string
+	p       *FPool
+	wchan   chan wdata
+	s       *Super
 }
 
 func (img *Img) putObj(objLen uint64, src io.Reader, dst io.WriteSeeker) uint32 {
 	objId := img.s.UpdateNextObjId(dst)
 	imgPos := img.s.UpdateImgLen(dst, objLen+ObjHeadSize+ObjTailSize)
 	// write idx
-	var entry IdxEntry
-	entry.Offset = img.s.GetIdxEntryOff(objId)
-	entry.ObjPos = imgPos
-	entry.ObjLen = objLen
-	entry.Update(dst)
+	var idx Idx
+	idx.Offset = img.s.GetIdxOff(objId)
+	idx.ObjPos = imgPos
+	idx.ObjLen = objLen
+	idx.Update(dst)
 	// write obj
 	var o Obj
 	o.Offset = int64(imgPos)
@@ -53,7 +53,7 @@ func (img *Img) putObj(objLen uint64, src io.Reader, dst io.WriteSeeker) uint32 
 }
 
 func (img *Img) wRoutine() {
-	fw, err := os.OpenFile(img.fname, os.O_RDWR, 0666)
+	fw, err := os.OpenFile(img.ImgName, os.O_RDWR, 0666)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -67,14 +67,10 @@ func (img *Img) wRoutine() {
 	}
 }
 
-func NewImg(fname string) *Img {
+func NewImg(ImgName string) *Img {
 	img := new(Img)
-	img.fname = fname
-
-	var err error
-	if img.fr, err = os.Open(fname); err != nil {
-		return nil
-	}
+	img.ImgName = ImgName
+	img.p = NewFPool(ImgName)
 	img.wchan = make(chan wdata, 512)
 
 	go img.wRoutine()
@@ -82,39 +78,52 @@ func NewImg(fname string) *Img {
 }
 
 func (img *Img) LoadSuper() bool {
-	img.s = NewSuper(img.fr)
+	fr := img.p.Alloc()
+	defer img.p.Free(fr)
+
+	img.s = NewSuper(fr)
 	if img.s == nil {
 		return false
 	}
 	return true
 }
 
-func (img *Img) GetIdxEntry(objId uint32) *IdxEntry {
-	offset := img.s.GetIdxEntryOff(objId)
+func (img *Img) GetIdx(objId uint32) *Idx {
+	offset := img.s.GetIdxOff(objId)
 	if offset == 0 {
 		return nil
 	}
-	return NewIdxEntry(img.fr, offset)
+
+	fr := img.p.Alloc()
+	defer img.p.Free(fr)
+
+	return NewIdx(fr, offset)
 }
 
 func (img *Img) GetObj(objId uint32) *Obj {
-	entry := img.GetIdxEntry(objId)
-	if entry == nil {
+	idx := img.GetIdx(objId)
+	if idx == nil {
 		return nil
 	}
 
-	o := NewObj(img.fr, int64(entry.ObjPos))
+	fr := img.p.Alloc()
+	defer img.p.Free(fr)
+
+	o := NewObj(fr, int64(idx.ObjPos))
 	if o == nil {
 		return nil
 	}
-	if entry.ObjType != o.ObjType || entry.ObjLen != o.ObjLen || entry.ObjFlag != o.ObjFlag {
+	if idx.ObjType != o.ObjType || idx.ObjLen != o.ObjLen || idx.ObjFlag != o.ObjFlag {
 		return nil
 	}
 	return o
 }
 
 func (img *Img) Get(o *Obj, dst io.Writer) {
-	o.Retrive(img.fr, dst)
+	fr := img.p.Alloc()
+	defer img.p.Free(fr)
+
+	o.Retrive(fr, dst)
 }
 
 func (img *Img) Put(objLen uint64, src io.Reader) uint32 {
