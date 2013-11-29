@@ -2,6 +2,7 @@ package mfs
 
 import (
 	"io"
+  "fmt"
 )
 
 const (
@@ -32,7 +33,7 @@ func NewIdx(src io.ReadSeeker, Offset int64) *Idx {
 	return idx
 }
 
-func (idx *Idx) Update(dst io.WriteSeeker) {
+func (idx *Idx) Store(dst io.WriteSeeker) {
 	buf := make([]byte, IdxSize)
 	copy(buf[0:6], Uint64ToByte(idx.ObjPos)[2:])
 	copy(buf[6:8], Uint64ToByte(uint64(idx.ObjType))[6:])

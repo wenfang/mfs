@@ -8,7 +8,12 @@ import (
 	"strings"
 )
 
-type ConfParse map[string]map[string]string
+type Key struct {
+	sec string
+	key string
+}
+
+type ConfParse map[Key]string
 
 func New(filename string) (ConfParse, error) {
 	f, err := os.Open(filename)
@@ -18,8 +23,7 @@ func New(filename string) (ConfParse, error) {
 	defer f.Close()
 
 	conf := make(ConfParse)
-	sec := "global"
-	conf[sec] = make(map[string]string)
+	sec := ""
 
 	r := bufio.NewReader(f)
 	for {
@@ -37,7 +41,6 @@ func New(filename string) (ConfParse, error) {
 			if sec = strings.TrimSpace(line[1 : len(line)-1]); len(sec) == 0 {
 				return nil, errors.New("Section [] Not Allow")
 			}
-			conf[sec] = make(map[string]string)
 			continue
 		}
 
@@ -52,17 +55,13 @@ func New(filename string) (ConfParse, error) {
 			return nil, errors.New("Key Value Not Valid")
 		}
 
-		conf[sec][key] = value
+		conf[Key{sec, key}] = value
 	}
 	return conf, nil
 }
 
 func (conf ConfParse) GetStr(sec, key string) (string, error) {
-	if sec == "" {
-		sec = "global"
-	}
-
-	value, ok := conf[sec][key]
+	value, ok := conf[Key{sec, key}]
 	if !ok {
 		return "", errors.New("Key \"" + key + "\" Not Found")
 	}
@@ -70,11 +69,7 @@ func (conf ConfParse) GetStr(sec, key string) (string, error) {
 }
 
 func (conf ConfParse) GetInt(sec, key string) (int, error) {
-	if sec == "" {
-		sec = "global"
-	}
-
-	value, ok := conf[sec][key]
+	value, ok := conf[Key{sec, key}]
 	if !ok {
 		return 0, errors.New("Key \"" + key + "\" Not Found")
 	}

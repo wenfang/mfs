@@ -1,20 +1,20 @@
 package mfs
 
 import (
-    "bytes"
+	"bytes"
 	"io"
 	"log"
 	"os"
 )
 
 const (
-	W_PUTOBJ = iota
-	W_UPDATEOBJ
-	W_DELOBJ
+	PUTOBJ = iota
+	UPDATEOBJ
+	DELOBJ
 )
 
 const (
-	ObjBufferLimit = 64 * 1024 * 1024
+	ObjBufLimit = 64 * 1024 * 1024
 )
 
 type wdata struct {
@@ -28,29 +28,55 @@ type wdata struct {
 
 type Img struct {
 	ImgName string
-	p       *FPool
+	Sup     *Super
+	pool    *FPool
 	wchan   chan wdata
-	s       *Super
 }
 
 func (img *Img) putObj(objLen uint64, src io.Reader, dst io.WriteSeeker) uint32 {
-	objId := img.s.UpdateNextObjId(dst)
-	imgPos := img.s.UpdateImgLen(dst, objLen+ObjHeadSize+ObjTailSize)
-	// write idx
+	objId := img.Sup.UpdateNextObjId(dst)
+	if objId == 0 {
+		return 0
+	}
+
+	imgPos := img.Sup.UpdateImgLen(dst, objLen+ObjHeadSize+ObjTailSize)
+	if imgPos == 0 {
+		return 0
+	}
+
 	var idx Idx
-	idx.Offset = img.s.GetIdxOff(objId)
+	idx.Offset = img.Sup.GetIdxOff(objId)
 	idx.ObjPos = imgPos
 	idx.ObjLen = objLen
-	idx.Update(dst)
-	// write obj
-	var o Obj
-	o.Offset = int64(imgPos)
-	o.ObjId = objId
-	o.ObjSize = objLen + ObjHeadSize + ObjTailSize
-	o.ObjLen = objLen
-	o.Store(src, dst)
+	idx.Store(dst)
+
+	var obj Obj
+	obj.Offset = int64(imgPos)
+	obj.ObjId = objId
+	obj.ObjSize = objLen + ObjHeadSize + ObjTailSize
+	obj.ObjLen = objLen
+	obj.StoreHead(dst)
+  obj.StoreData(src, dst)
 
 	return objId
+}
+
+func (img *Img) delObj(objId uint32, dst io.WriteSeeker) uint32 {
+  obj := img.GetObj(objId)
+  if obj == nil {
+    return 1
+  }
+  obj.ObjFlag |= 0x1
+  obj.StoreHead(dst)
+
+	idx := img.GetIdx(objId)
+	if idx == nil {
+		return 0
+	}
+	idx.ObjFlag |= 0x1
+	idx.Store(dst)
+
+  return 2
 }
 
 func (img *Img) wRoutine() {
@@ -62,8 +88,10 @@ func (img *Img) wRoutine() {
 
 	for v := range img.wchan {
 		switch v.wtype {
-		case W_PUTOBJ:
+		case PUTOBJ:
 			v.fin <- img.putObj(v.objLen, v.src, fw)
+		case DELOBJ:
+			v.fin <- img.delObj(v.objId, fw)
 		}
 	}
 }
@@ -71,32 +99,28 @@ func (img *Img) wRoutine() {
 func NewImg(ImgName string) *Img {
 	img := new(Img)
 	img.ImgName = ImgName
-	img.p = NewFPool(ImgName)
+	img.pool = NewFPool(ImgName)
 	img.wchan = make(chan wdata, 512)
+
+	fr := img.pool.Alloc()
+	defer img.pool.Free(fr)
+	img.Sup = NewSuper(fr)
+	if img.Sup == nil {
+		return nil
+	}
 
 	go img.wRoutine()
 	return img
 }
 
-func (img *Img) LoadSuper() bool {
-	fr := img.p.Alloc()
-	defer img.p.Free(fr)
-
-	img.s = NewSuper(fr)
-	if img.s == nil {
-		return false
-	}
-	return true
-}
-
 func (img *Img) GetIdx(objId uint32) *Idx {
-	offset := img.s.GetIdxOff(objId)
+	offset := img.Sup.GetIdxOff(objId)
 	if offset == 0 {
 		return nil
 	}
 
-	fr := img.p.Alloc()
-	defer img.p.Free(fr)
+	fr := img.pool.Alloc()
+	defer img.pool.Free(fr)
 
 	return NewIdx(fr, offset)
 }
@@ -107,36 +131,43 @@ func (img *Img) GetObj(objId uint32) *Obj {
 		return nil
 	}
 
-	fr := img.p.Alloc()
-	defer img.p.Free(fr)
+	fr := img.pool.Alloc()
+	defer img.pool.Free(fr)
 
-	o := NewObj(fr, int64(idx.ObjPos))
-	if o == nil {
+	obj := NewObj(fr, int64(idx.ObjPos))
+	if obj == nil {
 		return nil
 	}
-	if idx.ObjType != o.ObjType || idx.ObjLen != o.ObjLen || idx.ObjFlag != o.ObjFlag {
+
+	if idx.ObjType != obj.ObjType || idx.ObjLen != obj.ObjLen || idx.ObjFlag != obj.ObjFlag {
 		return nil
 	}
-	return o
+	return obj
 }
 
 func (img *Img) Get(o *Obj, dst io.Writer) {
-	fr := img.p.Alloc()
-	defer img.p.Free(fr)
+	fr := img.pool.Alloc()
+	defer img.pool.Free(fr)
 
 	o.Retrive(fr, dst)
 }
 
+// 将objLen长度的数据保存在img，返回保存id，保存失败返回0
 func (img *Img) Put(objLen uint64, src io.Reader) uint32 {
-    var s *bytes.Buffer
-	if objLen <= ObjBufferLimit {
-        s = bytes.NewBuffer(make([]byte, objLen))
-        io.CopyN(s, src, int64(objLen))
-	} else {
-        *s = src
-    }
-
+	var s *bytes.Buffer
+	if objLen <= ObjBufLimit {
+		s = bytes.NewBuffer(make([]byte, 0, objLen))
+		if _, err := io.CopyN(s, src, int64(objLen)); err != nil {
+			return 0
+		}
+	}
 	fin := make(chan uint32)
-	img.wchan <- wdata{W_PUTOBJ, 0, objLen, 0, s, fin}
+	img.wchan <- wdata{PUTOBJ, 0, objLen, 0, s, fin}
+	return <-fin
+}
+
+func (img *Img) Del(objId uint32) uint32 {
+	fin := make(chan uint32)
+	img.wchan <- wdata{DELOBJ, objId, 0, 0, nil, fin}
 	return <-fin
 }

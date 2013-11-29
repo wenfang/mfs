@@ -11,31 +11,45 @@ import (
 	"strings"
 )
 
-const (
-	idxSizeBit = 4
-	datFlagBit = 8
-)
-
-type cFun func(uint64, io.ReadWriter)
-
-var cmdFun map[string]cFun
+var Cmd = map[string]func(uint64, io.ReadWriter){
+	"get": getCmd,
+	"put": putCmd,
+  "del": delCmd,
+}
 var img *mfs.Img
 
 func getCmd(objId uint64, c io.ReadWriter) {
-  o := img.GetObj(uint32(objId))
-  if o == nil {
-    io.WriteString(c, fmt.Sprintf("+E No Obj Found\r\n"))
-    return
-  }
-  io.WriteString(c, fmt.Sprintf("+S %d\r\n", o.ObjLen))
+	obj := img.GetObj(uint32(objId))
+	if obj == nil {
+		io.WriteString(c, "+E Object Not Found\r\n")
+		return
+	}
+	io.WriteString(c, fmt.Sprintf("+S %d\r\n", obj.ObjLen))
 
-	img.Get(o, c)
+	img.Get(obj, c)
 	return
 }
 
 func putCmd(objLen uint64, c io.ReadWriter) {
 	id := img.Put(objLen, c)
-  io.WriteString(c, fmt.Sprintf("+S %d\r\n", id))
+  if id == 0 {
+    log.Println("Object Put Error")
+    io.WriteString(c, "+E Put Object Error")
+    return
+  }
+	io.WriteString(c, fmt.Sprintf("+S %d\r\n", id))
+}
+
+func delCmd(objId uint64, c io.ReadWriter) {
+  res := img.Del(uint32(objId))
+  if res == 0 {
+    io.WriteString(c, "+E Del Object Not Found in Idx\r\n")
+    return
+  } else if res == 1 {
+    io.WriteString(c, "+E Del Object Not Found in Obj\r\n")
+    return
+  }
+  io.WriteString(c, "+S\r\n")
 }
 
 func mainHandle(c net.Conn) {
@@ -49,7 +63,7 @@ func mainHandle(c net.Conn) {
 	}
 	fields := strings.Fields(line)
 
-	if _, ok := cmdFun[fields[0]]; !ok {
+	if _, ok := Cmd[fields[0]]; !ok {
 		io.WriteString(c, "+E Command Not Found\r\n")
 		return
 	}
@@ -63,19 +77,13 @@ func mainHandle(c net.Conn) {
 		return
 	}
 
-	cmdFun[fields[0]](arg, c)
+	Cmd[fields[0]](arg, c)
 }
 
 func init() {
-	cmdFun = map[string]cFun{
-		"get": getCmd,
-		"put": putCmd,
-	}
-
 	if img = mfs.NewImg("img"); img == nil {
 		log.Fatal("Open img Error")
 	}
-	img.LoadSuper()
 }
 
 func main() {

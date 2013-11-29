@@ -30,14 +30,14 @@ func NewObj(src io.ReadSeeker, Offset int64) *Obj {
 		return nil
 	}
 
-	o := new(Obj)
-	o.Offset = Offset
-	o.ObjId = uint32(ByteToUint64(buf[4:8]))
-	o.ObjSize = ByteToUint64(buf[8:14])
-	o.ObjType = uint16(ByteToUint64(buf[14:16]))
-	o.ObjLen = ByteToUint64(buf[16:22])
-	o.ObjFlag = uint16(ByteToUint64(buf[22:24]))
-	return o
+	obj := new(Obj)
+	obj.Offset = Offset
+	obj.ObjId = uint32(ByteToUint64(buf[4:8]))
+	obj.ObjSize = ByteToUint64(buf[8:14])
+	obj.ObjType = uint16(ByteToUint64(buf[14:16]))
+	obj.ObjLen = ByteToUint64(buf[16:22])
+	obj.ObjFlag = uint16(ByteToUint64(buf[22:24]))
+	return obj
 }
 
 func (o *Obj) Retrive(src io.ReadSeeker, dst io.Writer) {
@@ -45,7 +45,7 @@ func (o *Obj) Retrive(src io.ReadSeeker, dst io.Writer) {
 	io.CopyN(dst, src, int64(o.ObjLen))
 }
 
-func (o *Obj) Store(src io.Reader, dst io.WriteSeeker) {
+func (o *Obj) StoreHead(dst io.WriteSeeker) {
 	buf := make([]byte, ObjHeadSize)
 	n := copy(buf, []byte("OSTA"))
 	n += copy(buf[n:], Uint64ToByte(uint64(o.ObjId))[4:])
@@ -55,11 +55,14 @@ func (o *Obj) Store(src io.Reader, dst io.WriteSeeker) {
 	n += copy(buf[n:], Uint64ToByte(uint64(o.ObjFlag))[6:])
 	dst.Seek(o.Offset, 0)
 	dst.Write(buf)
+}
 
+func (o *Obj) StoreData(src io.Reader, dst io.WriteSeeker) {
+  dst.Seek(o.Offset + ObjHeadSize, 0)
 	io.CopyN(dst, src, int64(o.ObjLen))
 
-	buf = make([]byte, ObjTailSize)
-	n = copy(buf, []byte("OEND"))
+  buf := make([]byte, ObjTailSize)
+  n := copy(buf, []byte("OEND"))
 	n += copy(buf[n:], Uint64ToByte(uint64(o.CRC32))[4:])
 	dst.Write(buf)
 }
