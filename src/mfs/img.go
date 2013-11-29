@@ -1,6 +1,7 @@
 package mfs
 
 import (
+    "bytes"
 	"io"
 	"log"
 	"os"
@@ -127,10 +128,15 @@ func (img *Img) Get(o *Obj, dst io.Writer) {
 }
 
 func (img *Img) Put(objLen uint64, src io.Reader) uint32 {
+    var s *bytes.Buffer
 	if objLen <= ObjBufferLimit {
-	}
+        s = bytes.NewBuffer(make([]byte, objLen))
+        io.CopyN(s, src, int64(objLen))
+	} else {
+        *s = src
+    }
 
 	fin := make(chan uint32)
-	img.wchan <- wdata{W_PUTOBJ, 0, objLen, 0, src, fin}
+	img.wchan <- wdata{W_PUTOBJ, 0, objLen, 0, s, fin}
 	return <-fin
 }
