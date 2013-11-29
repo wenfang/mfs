@@ -34,18 +34,18 @@ type Img struct {
 }
 
 func (img *Img) putObj(objLen uint64, src io.Reader, dst io.WriteSeeker) uint32 {
-	objId := img.Sup.UpdateNextObjId(dst)
-	if objId == 0 {
+	objId, err := img.Sup.UpdateNextObjId(dst)
+	if err != nil {
 		return 0
 	}
 
-	imgPos := img.Sup.UpdateImgLen(dst, objLen+ObjHeadSize+ObjTailSize)
-	if imgPos == 0 {
+	imgPos, err := img.Sup.UpdateImgLen(dst, objLen+ObjHeadSize+ObjTailSize)
+	if err != nil {
 		return 0
 	}
 
 	var idx Idx
-	idx.Offset = img.Sup.GetIdxOff(objId)
+	idx.Offset, _ = img.Sup.GetIdxOff(objId)
 	idx.ObjPos = imgPos
 	idx.ObjLen = objLen
 	idx.Store(dst)
@@ -56,27 +56,27 @@ func (img *Img) putObj(objLen uint64, src io.Reader, dst io.WriteSeeker) uint32 
 	obj.ObjSize = objLen + ObjHeadSize + ObjTailSize
 	obj.ObjLen = objLen
 	obj.StoreHead(dst)
-  obj.StoreData(src, dst)
+	obj.StoreData(src, dst)
 
 	return objId
 }
 
 func (img *Img) delObj(objId uint32, dst io.WriteSeeker) uint32 {
-  obj := img.GetObj(objId)
-  if obj == nil {
-    return 1
-  }
-  obj.ObjFlag |= 0x1
-  obj.StoreHead(dst)
+	obj := img.GetObj(objId)
+	if obj == nil {
+		return 1
+	}
+	obj.ObjFlag |= 0x1
+	obj.StoreHead(dst)
 
-	idx := img.GetIdx(objId)
+	idx := img.getIdx(objId)
 	if idx == nil {
 		return 0
 	}
 	idx.ObjFlag |= 0x1
 	idx.Store(dst)
 
-  return 2
+	return 2
 }
 
 func (img *Img) wRoutine() {
@@ -96,6 +96,7 @@ func (img *Img) wRoutine() {
 	}
 }
 
+// 创建新的Img结构
 func NewImg(ImgName string) *Img {
 	img := new(Img)
 	img.ImgName = ImgName
@@ -104,8 +105,10 @@ func NewImg(ImgName string) *Img {
 
 	fr := img.pool.Alloc()
 	defer img.pool.Free(fr)
-	img.Sup = NewSuper(fr)
-	if img.Sup == nil {
+
+  var err error
+	img.Sup, err = NewSuper(fr)
+	if err != nil{
 		return nil
 	}
 
@@ -113,21 +116,28 @@ func NewImg(ImgName string) *Img {
 	return img
 }
 
-func (img *Img) GetIdx(objId uint32) *Idx {
-	offset := img.Sup.GetIdxOff(objId)
-	if offset == 0 {
+func (img *Img) getIdx(objId uint32) *Idx {
+	offset, err := img.Sup.GetIdxOff(objId)
+	if err != nil {
 		return nil
 	}
 
 	fr := img.pool.Alloc()
 	defer img.pool.Free(fr)
 
-	return NewIdx(fr, offset)
+	idx, err := NewIdx(fr, offset)
+	if err != nil {
+		return nil
+	}
+	return idx
 }
 
 func (img *Img) GetObj(objId uint32) *Obj {
-	idx := img.GetIdx(objId)
+	idx := img.getIdx(objId)
 	if idx == nil {
+		return nil
+	}
+	if idx.ObjFlag&0x1 == 0x1 {
 		return nil
 	}
 
@@ -143,6 +153,15 @@ func (img *Img) GetObj(objId uint32) *Obj {
 		return nil
 	}
 	return obj
+}
+
+// 获得objId所对应的对象的长度，排除已删除对象，对象未找到，返回0
+func (img *Img) GetObjLen(objId uint32) uint64 {
+	idx := img.getIdx(objId)
+	if idx == nil || idx.ObjFlag&0x1 == 0x1 {
+		return 0
+	}
+	return idx.ObjLen
 }
 
 func (img *Img) Get(o *Obj, dst io.Writer) {
@@ -166,6 +185,7 @@ func (img *Img) Put(objLen uint64, src io.Reader) uint32 {
 	return <-fin
 }
 
+// 删除objId对应的对象
 func (img *Img) Del(objId uint32) uint32 {
 	fin := make(chan uint32)
 	img.wchan <- wdata{DELOBJ, objId, 0, 0, nil, fin}

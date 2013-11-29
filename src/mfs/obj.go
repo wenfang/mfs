@@ -1,6 +1,7 @@
 package mfs
 
 import (
+	"errors"
 	"io"
 )
 
@@ -18,6 +19,10 @@ type Obj struct {
 	ObjFlag uint16
 	CRC32   uint32
 }
+
+var (
+	ObjErrRetrive = errors.New("Retrive Obj Data Error")
+)
 
 func NewObj(src io.ReadSeeker, Offset int64) *Obj {
 	src.Seek(Offset, 0)
@@ -40,9 +45,14 @@ func NewObj(src io.ReadSeeker, Offset int64) *Obj {
 	return obj
 }
 
-func (o *Obj) Retrive(src io.ReadSeeker, dst io.Writer) {
+// 从src中获取对象内容到dst
+func (o *Obj) Retrive(src io.ReadSeeker, dst io.Writer) error {
 	src.Seek(o.Offset+ObjHeadSize, 0)
-	io.CopyN(dst, src, int64(o.ObjLen))
+	if _, err := io.CopyN(dst, src, int64(o.ObjLen)); err != nil {
+		return ObjErrRetrive
+	}
+
+	return nil
 }
 
 func (o *Obj) StoreHead(dst io.WriteSeeker) {
@@ -58,11 +68,11 @@ func (o *Obj) StoreHead(dst io.WriteSeeker) {
 }
 
 func (o *Obj) StoreData(src io.Reader, dst io.WriteSeeker) {
-  dst.Seek(o.Offset + ObjHeadSize, 0)
+	dst.Seek(o.Offset+ObjHeadSize, 0)
 	io.CopyN(dst, src, int64(o.ObjLen))
 
-  buf := make([]byte, ObjTailSize)
-  n := copy(buf, []byte("OEND"))
+	buf := make([]byte, ObjTailSize)
+	n := copy(buf, []byte("OEND"))
 	n += copy(buf[n:], Uint64ToByte(uint64(o.CRC32))[4:])
 	dst.Write(buf)
 }
