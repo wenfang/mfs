@@ -2,6 +2,7 @@ package mfs
 
 import (
 	"errors"
+  "hash/crc32"
 	"io"
 )
 
@@ -21,13 +22,13 @@ type Obj struct {
 }
 
 var (
-	ObjErrRetrive = errors.New("Retrive Obj Data Error")
+	OERetrive = errors.New("Obj Retrive Data Error")
 )
 
-func NewObj(src io.ReadSeeker, Offset int64) *Obj {
-	src.Seek(Offset, 0)
+func NewObj(f io.ReadSeeker, Offset int64) *Obj {
+	f.Seek(Offset, 0)
 	buf := make([]byte, ObjHeadSize)
-	if _, err := src.Read(buf); err != nil {
+	if _, err := f.Read(buf); err != nil {
 		return nil
 	}
 
@@ -49,7 +50,7 @@ func NewObj(src io.ReadSeeker, Offset int64) *Obj {
 func (o *Obj) Retrive(src io.ReadSeeker, dst io.Writer) error {
 	src.Seek(o.Offset+ObjHeadSize, 0)
 	if _, err := io.CopyN(dst, src, int64(o.ObjLen)); err != nil {
-		return ObjErrRetrive
+		return OERetrive
 	}
 
 	return nil
@@ -67,12 +68,16 @@ func (o *Obj) StoreHead(dst io.WriteSeeker) {
 	dst.Write(buf)
 }
 
-func (o *Obj) StoreData(src io.Reader, dst io.WriteSeeker) {
-	dst.Seek(o.Offset+ObjHeadSize, 0)
-	io.CopyN(dst, src, int64(o.ObjLen))
+// 从b(接收buf，可能在内存也可能是临时文件)写对象数据到f
+func (o *Obj) StoreData(b io.Reader, f io.WriteSeeker) {
+  h := crc32.NewIEEE()
+  mw := io.MultiWriter(h, f)
+
+	f.Seek(o.Offset+ObjHeadSize, 0)
+	io.CopyN(mw, b, int64(o.ObjLen))
 
 	buf := make([]byte, ObjTailSize)
 	n := copy(buf, []byte("OEND"))
 	n += copy(buf[n:], Uint64ToByte(uint64(o.CRC32))[4:])
-	dst.Write(buf)
+	f.Write(buf)
 }
