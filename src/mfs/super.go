@@ -21,21 +21,21 @@ type Super struct {
 }
 
 var (
-	SESeek   = errors.New("Super Seek Error")
-	SERead   = errors.New("Super Read Error")
-	SEMagic  = errors.New("Super Magic Error")
-	SEImgLen = errors.New("Super Img Length Error")
-	SEObjId  = errors.New("Super ObjId Error")
-  SEIdxOff = errors.New("Super Idx Offset Error")
-  SEImgOver = errors.New("Super Img Overflow")
-  SEImgLenSeek = errors.New("Super Img Len Seek Error")
-  SEImgLenWrite = errors.New("Super Img Len Write Error")
-  SEObjIdOver = errors.New("Super ObjId Overflow")
-  SEObjIdSeek = errors.New("Super ObjId Seek Error")
-  SEObjIdWrite = errors.New("Super ObjId Write Error")
-  SEMidxAlloc = errors.New("Super Midx Alloc Error")
-  SEMidxSeek = errors.New("Super Midx Seek Error")
-  SEMidxWrite = errors.New("Super Midx Write Error")
+	SESeek        = errors.New("Super Seek Error")
+	SERead        = errors.New("Super Read Error")
+	SEMagic       = errors.New("Super Magic Error")
+	SEImgLen      = errors.New("Super Img Length Error")
+	SEObjId       = errors.New("Super ObjId Error")
+	SEIdxOff      = errors.New("Super Idx Offset Error")
+	SEImgOver     = errors.New("Super Img Overflow")
+	SEImgLenSeek  = errors.New("Super Img Len Seek Error")
+	SEImgLenWrite = errors.New("Super Img Len Write Error")
+	SEObjIdOver   = errors.New("Super ObjId Overflow")
+	SEObjIdSeek   = errors.New("Super ObjId Seek Error")
+	SEObjIdWrite  = errors.New("Super ObjId Write Error")
+	SEMidxAlloc   = errors.New("Super Midx Alloc Error")
+	SEMidxSeek    = errors.New("Super Midx Seek Error")
+	SEMidxWrite   = errors.New("Super Midx Write Error")
 )
 
 func NewSuper(f io.ReadSeeker) (*Super, error) {
@@ -82,14 +82,14 @@ func (s *Super) UpdateImgLen(f io.WriteSeeker, objSize uint64) (uint64, error) {
 		return 0, SEImgOver
 	}
 
-  res := s.ImgLen
+	res := s.ImgLen
 	s.ImgLen += objSize
-  if _, err := f.Seek(8, 0); err != nil {
-    return 0, SEImgLenSeek
-  }
-  if _, err := f.Write(Uint64ToByte(s.ImgLen)[2:]); err != nil {
-    return 0, SEImgLenWrite
-  }
+	if _, err := f.Seek(8, 0); err != nil {
+		return 0, SEImgLenSeek
+	}
+	if _, err := f.Write(Uint64ToByte(s.ImgLen)[2:]); err != nil {
+		return 0, SEImgLenWrite
+	}
 	return res, nil
 }
 
@@ -99,28 +99,28 @@ func (s *Super) UpdateNextObjId(f io.WriteSeeker) (uint32, error) {
 		return 0, SEObjIdOver
 	}
 
-  var err error
+	var err error
 
-  res := s.NextObjId
+	res := s.NextObjId
 	s.NextObjId++
-  if _, err = f.Seek(20, 0); err != nil {
-    return 0, SEObjIdSeek
-  }
-  if _, err = f.Write(Uint64ToByte(uint64(s.NextObjId))[4:]); err != nil {
-    return 0, SEObjIdWrite
-  }
+	if _, err = f.Seek(20, 0); err != nil {
+		return 0, SEObjIdSeek
+	}
+	if _, err = f.Write(Uint64ToByte(uint64(s.NextObjId))[4:]); err != nil {
+		return 0, SEObjIdWrite
+	}
 
 	if s.NextObjId%MIdxSize == 0 {
 		midx := s.NextObjId/MIdxSize - MinMIdx
-    if s.MIdx[midx], err = s.UpdateImgLen(f, MIdxSize*IdxSize); err != nil {
-      return 0, SEMidxAlloc
-    }
-    if _, err = f.Seek(int64(24+midx*8), 0); err != nil {
-      return 0, SEMidxSeek
-    }
-    if _, err = f.Write(Uint64ToByte(s.MIdx[midx])); err != nil {
-      return 0, SEMidxWrite
-    }
+		if s.MIdx[midx], err = s.UpdateImgLen(f, MIdxSize*IdxSize); err != nil {
+			return 0, SEMidxAlloc
+		}
+		if _, err = f.Seek(int64(24+midx*8), 0); err != nil {
+			return 0, SEMidxSeek
+		}
+		if _, err = f.Write(Uint64ToByte(s.MIdx[midx])); err != nil {
+			return 0, SEMidxWrite
+		}
 	}
 	return res, nil
 }

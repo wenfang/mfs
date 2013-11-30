@@ -106,9 +106,9 @@ func NewImg(ImgName string) *Img {
 	fr := img.pool.Alloc()
 	defer img.pool.Free(fr)
 
-  var err error
+	var err error
 	img.Sup, err = NewSuper(fr)
-	if err != nil{
+	if err != nil {
 		return nil
 	}
 
@@ -144,8 +144,8 @@ func (img *Img) GetObj(objId uint32) *Obj {
 	fr := img.pool.Alloc()
 	defer img.pool.Free(fr)
 
-	obj := NewObj(fr, int64(idx.ObjPos))
-	if obj == nil {
+	obj, err := NewObj(fr, int64(idx.ObjPos))
+	if err != nil {
 		return nil
 	}
 

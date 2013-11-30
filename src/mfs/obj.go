@@ -2,7 +2,7 @@ package mfs
 
 import (
 	"errors"
-  "hash/crc32"
+	"hash/crc32"
 	"io"
 )
 
@@ -22,18 +22,30 @@ type Obj struct {
 }
 
 var (
-	OERetrive = errors.New("Obj Retrive Data Error")
+	OENewSeek     = errors.New("Obj Seek Error")
+	OENewRead     = errors.New("Obj Read Error")
+	OEMagic       = errors.New("Obj Magic Error")
+	OERetriveSeek = errors.New("Obj Retrive Seek Error")
+	OERetrive     = errors.New("Obj Retrive Data Error")
+	OEStoreHSeek  = errors.New("Obj StoreHead Seek Error")
+	OEStoreHWrite = errors.New("Obj StoreHead Write Error")
+	OEStoreDSeek  = errors.New("Obj StoreData Seek Error")
+	OEStoreDWrite = errors.New("Obj StoreData Write Error")
+	OEStoreDCopy  = errors.New("Obj StoreData Copy Error")
 )
 
-func NewObj(f io.ReadSeeker, Offset int64) *Obj {
-	f.Seek(Offset, 0)
+func NewObj(f io.ReadSeeker, Offset int64) (*Obj, error) {
+	if _, err := f.Seek(Offset, 0); err != nil {
+		return nil, OENewSeek
+	}
+
 	buf := make([]byte, ObjHeadSize)
 	if _, err := f.Read(buf); err != nil {
-		return nil
+		return nil, OENewRead
 	}
 
 	if string(buf[0:4]) != "OSTA" {
-		return nil
+		return nil, OEMagic
 	}
 
 	obj := new(Obj)
@@ -43,41 +55,55 @@ func NewObj(f io.ReadSeeker, Offset int64) *Obj {
 	obj.ObjType = uint16(ByteToUint64(buf[14:16]))
 	obj.ObjLen = ByteToUint64(buf[16:22])
 	obj.ObjFlag = uint16(ByteToUint64(buf[22:24]))
-	return obj
+	return obj, nil
 }
 
-// 从src中获取对象内容到dst
-func (o *Obj) Retrive(src io.ReadSeeker, dst io.Writer) error {
-	src.Seek(o.Offset+ObjHeadSize, 0)
-	if _, err := io.CopyN(dst, src, int64(o.ObjLen)); err != nil {
+// 从f中获取对象内容到dst
+func (obj *Obj) Retrive(f io.ReadSeeker, c io.Writer) error {
+	if _, err := f.Seek(obj.Offset+ObjHeadSize, 0); err != nil {
+		return OERetriveSeek
+	}
+	if _, err := io.CopyN(c, f, int64(obj.ObjLen)); err != nil {
 		return OERetrive
 	}
-
 	return nil
 }
 
-func (o *Obj) StoreHead(dst io.WriteSeeker) {
+func (obj *Obj) StoreHead(f io.WriteSeeker) error {
 	buf := make([]byte, ObjHeadSize)
 	n := copy(buf, []byte("OSTA"))
-	n += copy(buf[n:], Uint64ToByte(uint64(o.ObjId))[4:])
-	n += copy(buf[n:], Uint64ToByte(o.ObjSize)[2:])
-	n += copy(buf[n:], Uint64ToByte(uint64(o.ObjType))[6:])
-	n += copy(buf[n:], Uint64ToByte(o.ObjLen)[2:])
-	n += copy(buf[n:], Uint64ToByte(uint64(o.ObjFlag))[6:])
-	dst.Seek(o.Offset, 0)
-	dst.Write(buf)
+	n += copy(buf[n:], Uint64ToByte(uint64(obj.ObjId))[4:])
+	n += copy(buf[n:], Uint64ToByte(obj.ObjSize)[2:])
+	n += copy(buf[n:], Uint64ToByte(uint64(obj.ObjType))[6:])
+	n += copy(buf[n:], Uint64ToByte(obj.ObjLen)[2:])
+	n += copy(buf[n:], Uint64ToByte(uint64(obj.ObjFlag))[6:])
+
+	if _, err := f.Seek(obj.Offset, 0); err != nil {
+		return OEStoreHSeek
+	}
+	if _, err := f.Write(buf); err != nil {
+		return OEStoreHWrite
+	}
+	return nil
 }
 
 // 从b(接收buf，可能在内存也可能是临时文件)写对象数据到f
-func (o *Obj) StoreData(b io.Reader, f io.WriteSeeker) {
-  h := crc32.NewIEEE()
-  mw := io.MultiWriter(h, f)
+func (o *Obj) StoreData(b io.Reader, f io.WriteSeeker) error {
+	h := crc32.NewIEEE()
+	mw := io.MultiWriter(h, f)
 
-	f.Seek(o.Offset+ObjHeadSize, 0)
-	io.CopyN(mw, b, int64(o.ObjLen))
+	if _, err := f.Seek(o.Offset+ObjHeadSize, 0); err != nil {
+		return OEStoreDSeek
+	}
+	if _, err := io.CopyN(mw, b, int64(o.ObjLen)); err != nil {
+		return OEStoreDCopy
+	}
 
 	buf := make([]byte, ObjTailSize)
 	n := copy(buf, []byte("OEND"))
 	n += copy(buf[n:], Uint64ToByte(uint64(o.CRC32))[4:])
-	f.Write(buf)
+	if _, err := f.Write(buf); err != nil {
+		return OEStoreDWrite
+	}
+	return nil
 }
