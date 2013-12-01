@@ -14,7 +14,7 @@ import (
 var Cmd = map[string]func(uint64, io.ReadWriter){
 	"get": getCmd,
 	"put": putCmd,
-  "del": delCmd,
+	"del": delCmd,
 }
 var img *mfs.Img
 
@@ -32,24 +32,24 @@ func getCmd(objId uint64, c io.ReadWriter) {
 
 func putCmd(objLen uint64, c io.ReadWriter) {
 	id := img.Put(objLen, c)
-  if id == 0 {
-    log.Println("Object Put Error")
-    io.WriteString(c, "+E Put Object Error")
-    return
-  }
+	if id == 0 {
+		log.Println("Object Put Error")
+		io.WriteString(c, "+E Put Object Error")
+		return
+	}
 	io.WriteString(c, fmt.Sprintf("+S %d\r\n", id))
 }
 
 func delCmd(objId uint64, c io.ReadWriter) {
-  res := img.Del(uint32(objId))
-  if res == 0 {
-    io.WriteString(c, "+E Del Object Not Found in Idx\r\n")
-    return
-  } else if res == 1 {
-    io.WriteString(c, "+E Del Object Not Found in Obj\r\n")
-    return
-  }
-  io.WriteString(c, "+S\r\n")
+	res := img.Del(uint32(objId))
+	if res == 0 {
+		io.WriteString(c, "+E Del Object Not Found in Idx\r\n")
+		return
+	} else if res == 1 {
+		io.WriteString(c, "+E Del Object Not Found in Obj\r\n")
+		return
+	}
+	io.WriteString(c, "+S\r\n")
 }
 
 func mainHandle(c net.Conn) {
@@ -80,13 +80,12 @@ func mainHandle(c net.Conn) {
 	Cmd[fields[0]](arg, c)
 }
 
-func init() {
-	if img = mfs.NewImg("img"); img == nil {
+func main() {
+	var err error
+	if img, err = mfs.NewImg("img"); err != nil {
 		log.Fatal("Open img Error")
 	}
-}
 
-func main() {
 	l, err := net.Listen("tcp4", ":7879")
 	if err != nil {
 		log.Fatal(err)

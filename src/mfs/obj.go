@@ -88,20 +88,20 @@ func (obj *Obj) StoreHead(f io.WriteSeeker) error {
 }
 
 // 从b(接收buf，可能在内存也可能是临时文件)写对象数据到f
-func (o *Obj) StoreData(b io.Reader, f io.WriteSeeker) error {
+func (obj *Obj) StoreData(b io.Reader, f io.WriteSeeker) error {
 	h := crc32.NewIEEE()
 	mw := io.MultiWriter(h, f)
 
-	if _, err := f.Seek(o.Offset+ObjHeadSize, 0); err != nil {
+	if _, err := f.Seek(obj.Offset+ObjHeadSize, 0); err != nil {
 		return OEStoreDSeek
 	}
-	if _, err := io.CopyN(mw, b, int64(o.ObjLen)); err != nil {
+	if _, err := io.CopyN(mw, b, int64(obj.ObjLen)); err != nil {
 		return OEStoreDCopy
 	}
 
 	buf := make([]byte, ObjTailSize)
 	n := copy(buf, []byte("OEND"))
-	n += copy(buf[n:], Uint64ToByte(uint64(o.CRC32))[4:])
+	n += copy(buf[n:], Uint64ToByte(uint64(obj.CRC32))[4:])
 	if _, err := f.Write(buf); err != nil {
 		return OEStoreDWrite
 	}
