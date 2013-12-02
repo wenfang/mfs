@@ -6,36 +6,42 @@ import (
 )
 
 func TestImg(t *testing.T) {
-	img := NewImg("img")
-	if img == nil {
+	img, err := NewImg("img")
+	if err != nil {
 		t.Fatal("NewImg Error")
 	}
 
-	if !img.LoadSuper() {
-		t.Fatal("Load Super Error")
-	}
 	buf := []byte{'a', 'b', 'c', 'd', 'e', 'f'}
 	b := bytes.NewBuffer(nil)
-	id := img.PutObj(3, bytes.NewReader(buf))
-	entry := img.GetObjIdxEntry(id)
-	img.GetObj(entry, b)
+	id, _ := img.Put(3, 10, bytes.NewReader(buf))
+	img.Get(id, b)
 	if b.String() != "abc" {
 		t.Fatal(b.String())
 	}
+  objLen, _ := img.GetObjLen(id)
+  if objLen != 3 {
+    t.Fatal(objLen)
+  }
 
 	b.Truncate(0)
-	id = img.PutObj(5, bytes.NewReader(buf))
-	entry = img.GetObjIdxEntry(id)
-	img.GetObj(entry, b)
+	id, _ = img.Put(5, 20, bytes.NewReader(buf))
+	img.Get(id, b)
 	if b.String() != "abcde" {
 		t.Fatal(b.String())
 	}
+  objLen, _ = img.GetObjLen(id)
+  if objLen != 5 {
+    t.Fatal(objLen)
+  }
 
 	b.Truncate(0)
-	id = img.PutObj(6, bytes.NewReader(buf))
-	entry = img.GetObjIdxEntry(id)
-	img.GetObj(entry, b)
+	id, _ = img.Put(6, 30, bytes.NewReader(buf))
+	img.Get(id, b)
 	if b.String() != "abcdef" {
 		t.Fatal(b.String())
 	}
+  objLen, _ = img.GetObjLen(id)
+  if objLen != 6 {
+    t.Fatal(objLen)
+  }
 }

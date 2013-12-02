@@ -71,9 +71,9 @@ func putCmd(args []string, c io.ReadWriter) error {
 }
 
 func delCmd(args []string, c io.ReadWriter) error {
-  if len(args) != 1 {
-    return errors.New("Del Args Number Error")
-  }
+	if len(args) != 1 {
+		return errors.New("Del Args Number Error")
+	}
 
 	objId, err := strconv.ParseUint(args[0], 10, 64)
 	if err != nil {
@@ -82,17 +82,17 @@ func delCmd(args []string, c io.ReadWriter) error {
 	}
 
 	if err = img.Del(uint32(objId)); err != nil {
-    log.Println(err)
-    return err
-  }
+		log.Println(err)
+		return err
+	}
 	io.WriteString(c, "+S\r\n")
 	return nil
 }
 
 func updateCmd(args []string, c io.ReadWriter) error {
-  if len(args) != 2 {
-    return errors.New("Update Args Number Error")
-  }
+	if len(args) != 2 {
+		return errors.New("Update Args Number Error")
+	}
 
 	objId, err := strconv.ParseUint(args[0], 10, 64)
 	if err != nil {
@@ -106,11 +106,11 @@ func updateCmd(args []string, c io.ReadWriter) error {
 		return errors.New("Del Args Parse Len Error")
 	}
 
-  if err = img.Update(uint32(objId), objLen, c); err != nil {
-    log.Println(err)
-    return err
-  }
-  io.WriteString(c, "+S\r\n")
+	if err = img.Update(uint32(objId), objLen, c); err != nil {
+		log.Println(err)
+		return err
+	}
+	io.WriteString(c, "+S\r\n")
 	return nil
 }
 
@@ -130,7 +130,7 @@ func mainHandle(c net.Conn) {
 		return
 	}
 
-  if err = Cmd[fields[0]](fields[1:], c); err != nil {
+	if err = Cmd[fields[0]](fields[1:], c); err != nil {
 		io.WriteString(c, fmt.Sprintf("+E %s\r\n", err.Error()))
 	}
 }

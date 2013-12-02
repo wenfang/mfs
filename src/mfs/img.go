@@ -93,9 +93,6 @@ func (img *Img) delObj(objId uint32, f io.WriteSeeker) (uint32, error) {
 	if err != nil {
 		return 0, err
 	}
-	if idx.ObjFlag&0x1 == 0x1 {
-		return 0, IEObjDel
-	}
 
 	obj, err := img.getObj(idx, fr)
 	if err != nil {
@@ -122,30 +119,27 @@ func (img *Img) updateObj(objId uint32, objLen uint64, b io.Reader, f io.WriteSe
 	if err != nil {
 		return 0, err
 	}
-	if idx.ObjFlag&0x1 == 0x1 {
-		return 0, IEObjDel
-	}
-  idx.ObjLen = objLen
+	idx.ObjLen = objLen
 
 	obj, err := img.getObj(idx, fr)
 	if err != nil {
 		return 0, err
 	}
-  if obj.ObjSize < objLen {
-    return 0, errors.New("ObjLen too Large")
-  }
-  obj.ObjLen = objLen
-  if err = obj.StoreHead(f); err != nil {
-    return 0, err
-  }
-  if err = obj.StoreData(b, f); err != nil {
-    return 0, err
-  }
+	if obj.ObjSize < objLen {
+		return 0, errors.New("ObjLen too Large")
+	}
+	obj.ObjLen = objLen
+	if err = obj.StoreHead(f); err != nil {
+		return 0, err
+	}
+	if err = obj.StoreData(b, f); err != nil {
+		return 0, err
+	}
 
-  if err = idx.Store(f); err != nil {
-    return 0, err
-  }
-  return obj.ObjId, nil
+	if err = idx.Store(f); err != nil {
+		return 0, err
+	}
+	return obj.ObjId, nil
 }
 
 func (img *Img) wRoutine() {
@@ -166,7 +160,6 @@ func (img *Img) wRoutine() {
 		case UPDATEOBJ:
 			rsp, err := img.updateObj(v.objId, v.objLen, v.src, fw)
 			v.fin <- wrsp{rsp, err}
-		default:
 		}
 	}
 }
@@ -201,6 +194,10 @@ func (img *Img) getIdx(objId uint32, fr *os.File) (*Idx, error) {
 	if err != nil {
 		return nil, err
 	}
+	if idx.ObjFlag&0x1 == 0x1 {
+		return nil, IEObjDel
+	}
+
 	return idx, nil
 }
 
@@ -209,7 +206,22 @@ func (img *Img) getObj(idx *Idx, fr *os.File) (*Obj, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	if idx.ObjType != obj.ObjType || idx.ObjLen != obj.ObjLen || idx.ObjFlag != obj.ObjFlag {
+		return nil, IEIdxObj
+	}
 	return obj, nil
+}
+
+func cTob(objLen uint64, c io.Reader) (*bytes.Buffer, error) {
+	var b *bytes.Buffer
+	if objLen <= ObjBufLimit {
+		b = bytes.NewBuffer(make([]byte, 0, objLen))
+		if _, err := io.CopyN(b, c, int64(objLen)); err != nil {
+			return nil, err
+		}
+	}
+	return b, nil
 }
 
 // 获得objId所对应的对象的长度，排除已删除对象，对象未找到，返回0
@@ -221,10 +233,6 @@ func (img *Img) GetObjLen(objId uint32) (uint64, error) {
 	if err != nil {
 		return 0, err
 	}
-	if idx.ObjFlag&0x1 == 0x1 {
-		return 0, IEObjDel
-	}
-
 	return idx.ObjLen, nil
 }
 
@@ -237,17 +245,9 @@ func (img *Img) Get(objId uint32, c io.Writer) error {
 	if err != nil {
 		return err
 	}
-
 	obj, err := img.getObj(idx, fr)
 	if err != nil {
 		return err
-	}
-
-	if idx.ObjType != obj.ObjType || idx.ObjLen != obj.ObjLen || idx.ObjFlag != obj.ObjFlag {
-		return IEIdxObj
-	}
-	if idx.ObjFlag&0x1 == 0x1 {
-		return IEObjDel
 	}
 
 	return obj.Retrive(fr, c)
@@ -255,12 +255,9 @@ func (img *Img) Get(objId uint32, c io.Writer) error {
 
 // 将objLen长度的数据保存在img，返回保存id，保存失败返回0
 func (img *Img) Put(objLen, objSize uint64, c io.Reader) (uint32, error) {
-	var b *bytes.Buffer
-	if objLen <= ObjBufLimit {
-		b = bytes.NewBuffer(make([]byte, 0, objLen))
-		if _, err := io.CopyN(b, c, int64(objLen)); err != nil {
-			return 0, err
-		}
+	b, err := cTob(objLen, c)
+	if err != nil {
+		return 0, err
 	}
 
 	fin := make(chan wrsp)
@@ -279,12 +276,9 @@ func (img *Img) Del(objId uint32) error {
 
 // 更新objId所对应的对象
 func (img *Img) Update(objId uint32, objLen uint64, c io.Reader) error {
-	var b *bytes.Buffer
-	if objLen <= ObjBufLimit {
-		b = bytes.NewBuffer(make([]byte, 0, objLen))
-		if _, err := io.CopyN(b, c, int64(objLen)); err != nil {
-			return err
-		}
+	b, err := cTob(objLen, c)
+	if err != nil {
+		return err
 	}
 
 	fin := make(chan wrsp)

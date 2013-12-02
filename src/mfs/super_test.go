@@ -15,14 +15,14 @@ func TestInit(t *testing.T) {
 }
 
 func TestNewSuper(t *testing.T) {
-	s := NewSuper(f)
-	if s == nil {
+	s, err := NewSuper(f)
+	if err != nil {
 		t.Fatal("Create Error")
 	}
 
 	s.UpdateImgLen(f, 1000)
 	markImgLen := s.ImgLen
-	s = NewSuper(f)
+	s, err = NewSuper(f)
 	if s.ImgLen != markImgLen {
 		t.Fatal(s.ImgLen, markImgLen)
 	}
