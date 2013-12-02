@@ -90,6 +90,27 @@ func delCmd(args []string, c io.ReadWriter) error {
 }
 
 func updateCmd(args []string, c io.ReadWriter) error {
+  if len(args) != 2 {
+    return errors.New("Update Args Number Error")
+  }
+
+	objId, err := strconv.ParseUint(args[0], 10, 64)
+	if err != nil {
+		log.Println(err)
+		return errors.New("Update Args Parse Id Error")
+	}
+
+	objLen, err := strconv.ParseUint(args[1], 10, 64)
+	if err != nil {
+		log.Println(err)
+		return errors.New("Del Args Parse Len Error")
+	}
+
+  if err = img.Update(uint32(objId), objLen, c); err != nil {
+    log.Println(err)
+    return err
+  }
+  io.WriteString(c, "+S\r\n")
 	return nil
 }
 
