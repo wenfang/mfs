@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -11,45 +12,85 @@ import (
 	"strings"
 )
 
-var Cmd = map[string]func(uint64, io.ReadWriter){
-	"get": getCmd,
-	"put": putCmd,
-	"del": delCmd,
+var Cmd = map[string]func([]string, io.ReadWriter) error{
+	"get":    getCmd,
+	"put":    putCmd,
+	"del":    delCmd,
+	"update": updateCmd,
 }
 var img *mfs.Img
 
-func getCmd(objId uint64, c io.ReadWriter) {
-	obj := img.GetObj(uint32(objId))
-	if obj == nil {
-		io.WriteString(c, "+E Object Not Found\r\n")
-		return
+func getCmd(args []string, c io.ReadWriter) error {
+	if len(args) != 1 {
+		return errors.New("Get Args Number Error")
 	}
-	io.WriteString(c, fmt.Sprintf("+S %d\r\n", obj.ObjLen))
 
-	img.Get(obj, c)
-	return
+	objId, err := strconv.ParseUint(args[0], 10, 64)
+	if err != nil {
+		log.Println(err)
+		return errors.New("Get Args Parse Error")
+	}
+
+	objLen, err := img.GetObjLen(uint32(objId))
+	if err != nil {
+		log.Println(err)
+		return err
+	}
+	io.WriteString(c, fmt.Sprintf("+S %d\r\n", objLen))
+
+	if err = img.Get(uint32(objId), c); err != nil {
+		log.Println(err)
+	}
+	return nil
 }
 
-func putCmd(objLen uint64, c io.ReadWriter) {
-	id := img.Put(objLen, c)
-	if id == 0 {
-		log.Println("Object Put Error")
-		io.WriteString(c, "+E Put Object Error")
-		return
+func putCmd(args []string, c io.ReadWriter) error {
+	if len(args) != 2 {
+		return errors.New("Put Args Number Error")
+	}
+
+	objLen, err := strconv.ParseUint(args[0], 10, 64)
+	if err != nil {
+		log.Println(err)
+		return errors.New("Put Args Parse Len Error")
+	}
+
+	objSize, err := strconv.ParseUint(args[1], 10, 64)
+	if err != nil {
+		log.Println(err)
+		return errors.New("Put Args Parse Size Error")
+	}
+
+	id, err := img.Put(objLen, objSize, c)
+	if err != nil {
+		log.Println(err)
+		return err
 	}
 	io.WriteString(c, fmt.Sprintf("+S %d\r\n", id))
+	return nil
 }
 
-func delCmd(objId uint64, c io.ReadWriter) {
-	res := img.Del(uint32(objId))
-	if res == 0 {
-		io.WriteString(c, "+E Del Object Not Found in Idx\r\n")
-		return
-	} else if res == 1 {
-		io.WriteString(c, "+E Del Object Not Found in Obj\r\n")
-		return
+func delCmd(args []string, c io.ReadWriter) error {
+  if len(args) != 1 {
+    return errors.New("Del Args Number Error")
+  }
+
+	objId, err := strconv.ParseUint(args[0], 10, 64)
+	if err != nil {
+		log.Println(err)
+		return errors.New("Del Args Parse Len Error")
 	}
+
+	if _, err = img.Del(uint32(objId)); err != nil {
+    log.Println(err)
+    return err
+  }
 	io.WriteString(c, "+S\r\n")
+	return nil
+}
+
+func updateCmd(args []string, c io.ReadWriter) error {
+	return nil
 }
 
 func mainHandle(c net.Conn) {
@@ -67,20 +108,16 @@ func mainHandle(c net.Conn) {
 		io.WriteString(c, "+E Command Not Found\r\n")
 		return
 	}
-	if len(fields) != 2 {
-		io.WriteString(c, "+E Command Arg Error\r\n")
-		return
-	}
-	arg, err := strconv.ParseUint(fields[1], 10, 64)
-	if err != nil {
-		io.WriteString(c, "+E Command Arg Parse Error\r\n")
-		return
-	}
 
-	Cmd[fields[0]](arg, c)
+  if err = Cmd[fields[0]](fields[1:], c); err != nil {
+		log.Println(err)
+		io.WriteString(c, fmt.Sprintf("+E %s\r\n", err.Error()))
+	}
 }
 
 func main() {
+	log.SetFlags(log.Lshortfile | log.LstdFlags)
+
 	var err error
 	if img, err = mfs.NewImg("img"); err != nil {
 		log.Fatal("Open img Error")
