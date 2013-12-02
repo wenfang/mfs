@@ -81,7 +81,7 @@ func delCmd(args []string, c io.ReadWriter) error {
 		return errors.New("Del Args Parse Len Error")
 	}
 
-	if _, err = img.Del(uint32(objId)); err != nil {
+	if err = img.Del(uint32(objId)); err != nil {
     log.Println(err)
     return err
   }
@@ -110,7 +110,6 @@ func mainHandle(c net.Conn) {
 	}
 
   if err = Cmd[fields[0]](fields[1:], c); err != nil {
-		log.Println(err)
 		io.WriteString(c, fmt.Sprintf("+E %s\r\n", err.Error()))
 	}
 }

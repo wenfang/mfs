@@ -47,9 +47,9 @@ type Img struct {
 }
 
 func (img *Img) putObj(objLen, objSize uint64, b io.Reader, f io.WriteSeeker) (uint32, error) {
-  if objSize < objLen {
-    objSize = objLen
-  }
+	if objSize < objLen {
+		objSize = objLen
+	}
 
 	objId, err := img.Sup.UpdateNextObjId(f)
 	if err != nil {
@@ -63,13 +63,13 @@ func (img *Img) putObj(objLen, objSize uint64, b io.Reader, f io.WriteSeeker) (u
 
 	var idx Idx
 	if idx.Offset, err = img.Sup.GetIdxOff(objId); err != nil {
-    return 0, err
-  }
+		return 0, err
+	}
 	idx.ObjPos = imgPos
 	idx.ObjLen = objLen
 	if err = idx.Store(f); err != nil {
-    return 0, err
-  }
+		return 0, err
+	}
 
 	var obj Obj
 	obj.Offset = int64(imgPos)
@@ -77,11 +77,11 @@ func (img *Img) putObj(objLen, objSize uint64, b io.Reader, f io.WriteSeeker) (u
 	obj.ObjSize = objSize + ObjHeadSize + ObjTailSize
 	obj.ObjLen = objLen
 	if err = obj.StoreHead(f); err != nil {
-    return 0, err
-  }
+		return 0, err
+	}
 	if err = obj.StoreData(b, f); err != nil {
-    return 0, err
-  }
+		return 0, err
+	}
 
 	return objId, nil
 }
@@ -94,15 +94,23 @@ func (img *Img) delObj(objId uint32, f io.WriteSeeker) (uint32, error) {
 	if err != nil {
 		return 0, err
 	}
-	idx.ObjFlag |= 0x1
-	idx.Store(f)
+	if idx.ObjFlag&0x1 == 0x1 {
+		return 0, IEObjDel
+	}
 
 	obj, err := img.getObj(idx, fr)
 	if err != nil {
 		return 0, err
 	}
 	obj.ObjFlag |= 0x1
-	obj.StoreHead(f)
+	if err = obj.StoreHead(f); err != nil {
+		return 0, err
+	}
+
+	idx.ObjFlag |= 0x1
+	if err = idx.Store(f); err != nil {
+		return 0, err
+	}
 
 	return 1, nil
 }
@@ -117,10 +125,10 @@ func (img *Img) wRoutine() {
 	for v := range img.wchan {
 		switch v.wtype {
 		case PUTOBJ:
-      rsp, err := img.putObj(v.objLen, v.objSize, v.src, fw)
+			rsp, err := img.putObj(v.objLen, v.objSize, v.src, fw)
 			v.fin <- wrsp{rsp, err}
 		case DELOBJ:
-      rsp, err := img.delObj(v.objId, fw)
+			rsp, err := img.delObj(v.objId, fw)
 			v.fin <- wrsp{rsp, err}
 		default:
 		}
@@ -218,19 +226,21 @@ func (img *Img) Put(objLen, objSize uint64, c io.Reader) (uint32, error) {
 			return 0, err
 		}
 	}
+
 	fin := make(chan wrsp)
 	img.wchan <- wreq{PUTOBJ, 0, objLen, objSize, 0, b, fin}
-  res := <-fin
+	res := <-fin
 	return res.rsp, res.err
 }
 
 // 删除objId对应的对象
-func (img *Img) Del(objId uint32) (uint32, error) {
+func (img *Img) Del(objId uint32) error {
 	fin := make(chan wrsp)
 	img.wchan <- wreq{DELOBJ, objId, 0, 0, 0, nil, fin}
-  res := <-fin
-	return res.rsp, res.err
+	res := <-fin
+	return res.err
 }
 
-func (img *Img) Update(objId uint32, offset, uptLen uint64) {
+func (img *Img) Update(objId uint32, offset, uptLen uint64) error {
+	return nil
 }
