@@ -3,6 +3,7 @@ package mfs
 import (
 	"bytes"
 	"errors"
+  "fmt"
 	"io"
 	"log"
 	"os"
@@ -124,8 +125,6 @@ func (img *Img) updateObj(objId uint32, objLen uint64, b io.Reader, f io.WriteSe
 	if err != nil {
 		return 0, err
 	}
-	idx.ObjLen = objLen
-
 	obj, err := img.getObj(idx, fr)
 	if err != nil {
 		return 0, err
@@ -133,6 +132,7 @@ func (img *Img) updateObj(objId uint32, objLen uint64, b io.Reader, f io.WriteSe
 	if obj.ObjSize < objLen {
 		return 0, errors.New("ObjLen too Large")
 	}
+
 	obj.ObjLen = objLen
 	if err = obj.StoreHead(f); err != nil {
 		return 0, err
@@ -141,6 +141,7 @@ func (img *Img) updateObj(objId uint32, objLen uint64, b io.Reader, f io.WriteSe
 		return 0, err
 	}
 
+	idx.ObjLen = objLen
 	if err = idx.Store(f); err != nil {
 		return 0, err
 	}
@@ -213,6 +214,7 @@ func (img *Img) getObj(idx *Idx, fr *os.File) (*Obj, error) {
 	}
 
 	if idx.ObjType != obj.ObjType || idx.ObjLen != obj.ObjLen || idx.ObjFlag != obj.ObjFlag {
+    fmt.Println(idx, obj)
 		return nil, IEIdxObj
 	}
 	return obj, nil

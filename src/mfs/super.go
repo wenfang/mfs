@@ -70,7 +70,7 @@ func NewSuper(f io.ReadSeeker) (*Super, error) {
 
 // 根据对象ID返回对象索引位置，如果对象ID不合法，返回0
 func (s *Super) GetIdxOff(objId uint32) (int64, error) {
-	if objId >= s.NextObjId {
+	if objId > s.NextObjId {
 		return 0, SEIdxOff
 	}
 	return int64(s.MIdx[objId/MIdxSize]) + int64(objId%MIdxSize)*IdxSize, nil
