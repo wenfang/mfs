@@ -60,12 +60,29 @@ func NewObj(f io.ReadSeeker, Offset int64) (*Obj, error) {
 
 // 从f中获取对象内容到dst
 func (obj *Obj) Retrive(f io.ReadSeeker, c io.Writer) error {
+  h := crc32.NewIEEE()
+  mw := io.MultiWriter(h, c)
+
 	if _, err := f.Seek(obj.Offset+ObjHeadSize, 0); err != nil {
 		return OERetriveSeek
 	}
-	if _, err := io.CopyN(c, f, int64(obj.ObjLen)); err != nil {
+	if _, err := io.CopyN(mw, f, int64(obj.ObjLen)); err != nil {
 		return OERetrive
 	}
+
+  buf := make([]byte, ObjTailSize)
+  if _, err := f.Read(buf); err != nil {
+    return errors.New("Obj Read Tail Error")
+  }
+
+  if string(buf[0:4]) != "OEND" {
+    return errors.New("Obj Read Tail Magic Error")
+  }
+
+  if h.Sum32() != uint32(ByteToUint64(buf[4:8])) {
+    return errors.New("Obj Read CRC32 Error")
+  }
+
 	return nil
 }
 
@@ -98,6 +115,7 @@ func (obj *Obj) StoreData(b io.Reader, f io.WriteSeeker) error {
 	if _, err := io.CopyN(mw, b, int64(obj.ObjLen)); err != nil {
 		return OEStoreDCopy
 	}
+  obj.CRC32 = h.Sum32()
 
 	buf := make([]byte, ObjTailSize)
 	n := copy(buf, []byte("OEND"))
