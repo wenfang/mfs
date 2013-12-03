@@ -22,16 +22,19 @@ type Obj struct {
 }
 
 var (
-	OENewSeek     = errors.New("Obj Seek Error")
-	OENewRead     = errors.New("Obj Read Error")
-	OEMagic       = errors.New("Obj Magic Error")
-	OERetriveSeek = errors.New("Obj Retrive Seek Error")
-	OERetrive     = errors.New("Obj Retrive Data Error")
-	OEStoreHSeek  = errors.New("Obj StoreHead Seek Error")
-	OEStoreHWrite = errors.New("Obj StoreHead Write Error")
-	OEStoreDSeek  = errors.New("Obj StoreData Seek Error")
-	OEStoreDWrite = errors.New("Obj StoreData Write Error")
-	OEStoreDCopy  = errors.New("Obj StoreData Copy Error")
+	OENewSeek       = errors.New("Obj Seek Error")
+	OENewRead       = errors.New("Obj Read Error")
+	OEMagic         = errors.New("Obj Magic Error")
+	OERetriveSeek   = errors.New("Obj Retrive Seek Error")
+	OERetrive       = errors.New("Obj Retrive Data Error")
+	OEReadTail      = errors.New("Obj Read Tail Error")
+	OEReadTailMagic = errors.New("Obj Read Tail Magic Error")
+	OEReadTailCRC   = errors.New("Obj Read Tail CRC Error")
+	OEStoreHSeek    = errors.New("Obj StoreHead Seek Error")
+	OEStoreHWrite   = errors.New("Obj StoreHead Write Error")
+	OEStoreDSeek    = errors.New("Obj StoreData Seek Error")
+	OEStoreDWrite   = errors.New("Obj StoreData Write Error")
+	OEStoreDCopy    = errors.New("Obj StoreData Copy Error")
 )
 
 func NewObj(f io.ReadSeeker, Offset int64) (*Obj, error) {
@@ -58,10 +61,10 @@ func NewObj(f io.ReadSeeker, Offset int64) (*Obj, error) {
 	return obj, nil
 }
 
-// 从f中获取对象内容到dst
+// 从f中获取对象内容到c
 func (obj *Obj) Retrive(f io.ReadSeeker, c io.Writer) error {
-  h := crc32.NewIEEE()
-  mw := io.MultiWriter(h, c)
+	h := crc32.NewIEEE()
+	mw := io.MultiWriter(h, c)
 
 	if _, err := f.Seek(obj.Offset+ObjHeadSize, 0); err != nil {
 		return OERetriveSeek
@@ -70,18 +73,18 @@ func (obj *Obj) Retrive(f io.ReadSeeker, c io.Writer) error {
 		return OERetrive
 	}
 
-  buf := make([]byte, ObjTailSize)
-  if _, err := f.Read(buf); err != nil {
-    return errors.New("Obj Read Tail Error")
-  }
+	buf := make([]byte, ObjTailSize)
+	if _, err := f.Read(buf); err != nil {
+		return OEReadTail
+	}
 
-  if string(buf[0:4]) != "OEND" {
-    return errors.New("Obj Read Tail Magic Error")
-  }
+	if string(buf[0:4]) != "OEND" {
+		return OEReadTailMagic
+	}
 
-  if h.Sum32() != uint32(ByteToUint64(buf[4:8])) {
-    return errors.New("Obj Read CRC32 Error")
-  }
+	if h.Sum32() != uint32(ByteToUint64(buf[4:8])) {
+		return OEReadTailCRC
+	}
 
 	return nil
 }
@@ -115,7 +118,7 @@ func (obj *Obj) StoreData(b io.Reader, f io.WriteSeeker) error {
 	if _, err := io.CopyN(mw, b, int64(obj.ObjLen)); err != nil {
 		return OEStoreDCopy
 	}
-  obj.CRC32 = h.Sum32()
+	obj.CRC32 = h.Sum32()
 
 	buf := make([]byte, ObjTailSize)
 	n := copy(buf, []byte("OEND"))

@@ -3,7 +3,7 @@ package mfs
 import (
 	"bytes"
 	"errors"
-  "fmt"
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -214,21 +214,21 @@ func (img *Img) getObj(idx *Idx, fr *os.File) (*Obj, error) {
 	}
 
 	if idx.ObjType != obj.ObjType || idx.ObjLen != obj.ObjLen || idx.ObjFlag != obj.ObjFlag {
-    fmt.Println(idx, obj)
+		fmt.Println(idx, obj)
 		return nil, IEIdxObj
 	}
 	return obj, nil
 }
 
-func cTob(objLen uint64, c io.Reader) (*bytes.Buffer, error) {
-	var b *bytes.Buffer
+func cTob(objLen uint64, c io.Reader) (io.Reader, error) {
 	if objLen <= ObjBufLimit {
-		b = bytes.NewBuffer(make([]byte, 0, objLen))
+		b := bytes.NewBuffer(make([]byte, 0, objLen))
 		if _, err := io.CopyN(b, c, int64(objLen)); err != nil {
 			return nil, err
 		}
+		return b, nil
 	}
-	return b, nil
+	return nil, errors.New("Img Data is too Large")
 }
 
 // 获得objId所对应的对象的长度，排除已删除对象，对象未找到，返回0

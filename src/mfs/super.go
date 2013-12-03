@@ -107,16 +107,19 @@ func (s *Super) StoreNextObjId(f io.WriteSeeker) error {
 
 	if s.NextObjId%MIdxSize == 0 {
 		midx := s.NextObjId / MIdxSize
-		s.MIdx[midx], s.ImgLen = s.NewImgLen(MIdxSize * IdxSize)
-		if err := s.StoreImgLen(f); err != nil {
-			return SEMidxAlloc
-		}
+		midxPos, imgLen := s.NewImgLen(MIdxSize * IdxSize)
 		if _, err := f.Seek(int64(SuperBlockSize+midx*8), 0); err != nil {
 			return SEMidxSeek
 		}
-		if _, err := f.Write(Uint64ToByte(s.MIdx[midx])); err != nil {
+		if _, err := f.Write(Uint64ToByte(midxPos)); err != nil {
 			return SEMidxWrite
 		}
+
+		s.ImgLen = imgLen
+		if err := s.StoreImgLen(f); err != nil {
+			return SEMidxAlloc
+		}
+		s.MIdx[midx] = midxPos
 	}
 	return nil
 }

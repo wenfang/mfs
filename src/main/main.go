@@ -2,12 +2,15 @@ package main
 
 import (
 	"bufio"
+  "confparse"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"log"
 	"mfs"
 	"net"
+	"os"
 	"strconv"
 	"strings"
 )
@@ -138,7 +141,23 @@ func mainHandle(c net.Conn) {
 func main() {
 	log.SetFlags(log.Lshortfile | log.LstdFlags)
 
-	var err error
+	var confName string
+	flag.StringVar(&confName, "f", "", "<config file Name>")
+	flag.Parse()
+	if confName == "" {
+		fmt.Printf("Usage of %s:\r\n", os.Args[0])
+		flag.PrintDefaults()
+		return
+	}
+
+  conf, err := confparse.New(confName)
+  if err != nil {
+    fmt.Println("[ERROR] ", err)
+    return
+  }
+
+  conf.GetStr("", "listen")
+
 	if img, err = mfs.NewImg("img"); err != nil {
 		log.Fatal("Open img Error")
 	}
