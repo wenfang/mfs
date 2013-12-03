@@ -32,13 +32,14 @@ func main() {
 		return
 	}
 
-	buf := make([]byte, mfs.SuperSize)
+	buf := make([]byte, mfs.SuperBlockSize+mfs.MIdxBlockSize)
 	n := copy(buf, []byte("MJFS"))
 	n += copy(buf[n:], mfs.Uint64ToByte(sitegrp)[4:])
-	n += copy(buf[n:], mfs.Uint64ToByte(mfs.SuperSize + mfs.MIdxSize*mfs.IdxSize)[2:])
+	n += copy(buf[n:], mfs.Uint64ToByte(mfs.SuperBlockSize + mfs.MIdxBlockSize + mfs.MIdxSize*mfs.IdxSize)[2:])
 	n += copy(buf[n:], mfs.Uint64ToByte(uint64(fi.Size()))[2:])
-	n += copy(buf[n:], mfs.Uint64ToByte(uint64(mfs.MinMIdx * mfs.MIdxSize))[4:])
-	copy(buf[n:], mfs.Uint64ToByte(mfs.SuperSize))
+	copy(buf[n:], mfs.Uint64ToByte(0)[4:])
+
+	copy(buf[mfs.SuperBlockSize:], mfs.Uint64ToByte(mfs.SuperBlockSize+mfs.MIdxBlockSize))
 
 	fw.Seek(0, 0)
 	fw.Write(buf)

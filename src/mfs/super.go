@@ -6,10 +6,11 @@ import (
 )
 
 const (
-	SuperSize = 32 * 1024
-	MinMIdx   = 3
-	MaxMIdx   = 4096 - 1
-	MIdxSize  = 1 << 20
+	SuperBlockSize = 4096
+	MIdxNum        = 4096
+	MIdxBlockSize  = 8 * MIdxNum
+	BlockAlign     = 1024
+	MIdxSize       = 1 << 20
 )
 
 type Super struct {
@@ -17,7 +18,7 @@ type Super struct {
 	ImgLen    uint64
 	ImgSize   uint64
 	NextObjId uint32
-	MIdx      [MaxMIdx - MinMIdx + 1]uint64
+	MIdx      [MIdxNum]uint64
 }
 
 var (
@@ -43,7 +44,7 @@ func NewSuper(f io.ReadSeeker) (*Super, error) {
 		return nil, SESeek
 	}
 
-	buf := make([]byte, SuperSize)
+	buf := make([]byte, SuperBlockSize+MIdxBlockSize)
 	if _, err := f.Read(buf); err != nil {
 		return nil, SERead
 	}
@@ -60,67 +61,62 @@ func NewSuper(f io.ReadSeeker) (*Super, error) {
 		return nil, SEImgLen
 	}
 	s.NextObjId = uint32(ByteToUint64(buf[20:24]))
-	if s.NextObjId < MinMIdx*MIdxSize {
-		return nil, SEObjId
-	}
-	for i, pos := uint32(MinMIdx), 24; i <= s.NextObjId/MIdxSize; i, pos = i+1, pos+8 {
-		s.MIdx[i-MinMIdx] = ByteToUint64(buf[pos : pos+8])
+
+	for i := uint32(0); i <= s.NextObjId/MIdxSize; i = i + 1 {
+		s.MIdx[i] = ByteToUint64(buf[SuperBlockSize+i*8 : SuperBlockSize+i*8+8])
 	}
 	return s, nil
 }
 
 // 根据对象ID返回对象索引位置，如果对象ID不合法，返回0
 func (s *Super) GetIdxOff(objId uint32) (int64, error) {
-	if objId < MinMIdx*MIdxSize || objId >= s.NextObjId {
+	if objId >= s.NextObjId {
 		return 0, SEIdxOff
 	}
-	return int64(s.MIdx[objId/MIdxSize-MinMIdx]) + int64(objId%MIdxSize)*IdxSize, nil
+	return int64(s.MIdx[objId/MIdxSize]) + int64(objId%MIdxSize)*IdxSize, nil
 }
 
-func (s *Super) UpdateImgLen(f io.WriteSeeker, objSize uint64) (uint64, error) {
-	if s.ImgLen+objSize >= s.ImgSize {
-		return 0, SEImgOver
-	}
-
-	res := s.ImgLen
-	s.ImgLen += objSize
+// 将ImgLen写入f
+func (s *Super) StoreImgLen(f io.WriteSeeker) error {
 	if _, err := f.Seek(8, 0); err != nil {
-		return 0, SEImgLenSeek
+		return SEImgLenSeek
 	}
 	if _, err := f.Write(Uint64ToByte(s.ImgLen)[2:]); err != nil {
-		return 0, SEImgLenWrite
+		return SEImgLenWrite
 	}
-	return res, nil
+	return nil
 }
 
-// NextObjId加1，返回老的NextObjId，必要时扩展MIdx，出错返回0
-func (s *Super) UpdateNextObjId(f io.WriteSeeker) (uint32, error) {
-	if s.NextObjId > 0xFFFFFFF0 {
-		return 0, SEObjIdOver
+// 根据当前ImgLen的值计算新对象的存放位置，及存放后ImgLen的值
+func (s *Super) NewImgLen(size uint64) (uint64, uint64) {
+	var extra uint64
+	if size%BlockAlign != 0 {
+		extra = 1
 	}
+	return s.ImgLen, s.ImgLen + (size/BlockAlign+extra)*BlockAlign
+}
 
-	var err error
-
-	res := s.NextObjId
-	s.NextObjId++
-	if _, err = f.Seek(20, 0); err != nil {
-		return 0, SEObjIdSeek
+// 将NextObjId的值保存在f中
+func (s *Super) StoreNextObjId(f io.WriteSeeker) error {
+	if _, err := f.Seek(20, 0); err != nil {
+		return SEObjIdSeek
 	}
-	if _, err = f.Write(Uint64ToByte(uint64(s.NextObjId))[4:]); err != nil {
-		return 0, SEObjIdWrite
+	if _, err := f.Write(Uint64ToByte(uint64(s.NextObjId))[4:]); err != nil {
+		return SEObjIdWrite
 	}
 
 	if s.NextObjId%MIdxSize == 0 {
-		midx := s.NextObjId/MIdxSize - MinMIdx
-		if s.MIdx[midx], err = s.UpdateImgLen(f, MIdxSize*IdxSize); err != nil {
-			return 0, SEMidxAlloc
+		midx := s.NextObjId / MIdxSize
+		s.MIdx[midx], s.ImgLen = s.NewImgLen(MIdxSize * IdxSize)
+		if err := s.StoreImgLen(f); err != nil {
+			return SEMidxAlloc
 		}
-		if _, err = f.Seek(int64(24+midx*8), 0); err != nil {
-			return 0, SEMidxSeek
+		if _, err := f.Seek(int64(SuperBlockSize+midx*8), 0); err != nil {
+			return SEMidxSeek
 		}
-		if _, err = f.Write(Uint64ToByte(s.MIdx[midx])); err != nil {
-			return 0, SEMidxWrite
+		if _, err := f.Write(Uint64ToByte(s.MIdx[midx])); err != nil {
+			return SEMidxWrite
 		}
 	}
-	return res, nil
+	return nil
 }

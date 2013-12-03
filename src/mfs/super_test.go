@@ -27,3 +27,9 @@ func TestNewSuper(t *testing.T) {
 		t.Fatal(s.ImgLen, markImgLen)
 	}
 }
+
+func TestNewImgLen(t *testing.T) {
+	var s Super
+	s.ImgLen = 1024
+	t.Fatal(s.NewImgLen(34569234))
+}

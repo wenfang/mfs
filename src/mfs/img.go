@@ -50,17 +50,11 @@ func (img *Img) putObj(objLen, objSize uint64, b io.Reader, f io.WriteSeeker) (u
 		objSize = objLen
 	}
 
-	objId, err := img.Sup.UpdateNextObjId(f)
-	if err != nil {
-		return 0, err
-	}
-
-	imgPos, err := img.Sup.UpdateImgLen(f, objSize+ObjHeadSize+ObjTailSize)
-	if err != nil {
-		return 0, err
-	}
+	objId := img.Sup.NextObjId
+	imgPos, imgLen := img.Sup.NewImgLen(objSize + ObjHeadSize + ObjTailSize)
 
 	var idx Idx
+	var err error
 	if idx.Offset, err = img.Sup.GetIdxOff(objId); err != nil {
 		return 0, err
 	}
@@ -70,7 +64,7 @@ func (img *Img) putObj(objLen, objSize uint64, b io.Reader, f io.WriteSeeker) (u
 	var obj Obj
 	obj.Offset = int64(imgPos)
 	obj.ObjId = objId
-	obj.ObjSize = objSize
+	obj.ObjSize = imgLen - imgPos - ObjHeadSize - ObjTailSize
 	obj.ObjLen = objLen
 	if err = obj.StoreHead(f); err != nil {
 		return 0, err
@@ -82,6 +76,17 @@ func (img *Img) putObj(objLen, objSize uint64, b io.Reader, f io.WriteSeeker) (u
 	if err = idx.Store(f); err != nil {
 		return 0, err
 	}
+
+	img.Sup.NextObjId++
+	if err := img.Sup.StoreNextObjId(f); err != nil {
+		return 0, err
+	}
+
+	img.Sup.ImgLen = imgLen
+	if err := img.Sup.StoreImgLen(f); err != nil {
+		return 0, err
+	}
+
 	return objId, nil
 }
 

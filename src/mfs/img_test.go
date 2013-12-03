@@ -18,10 +18,10 @@ func TestImg(t *testing.T) {
 	if b.String() != "abc" {
 		t.Fatal(b.String())
 	}
-  objLen, _ := img.GetObjLen(id)
-  if objLen != 3 {
-    t.Fatal(objLen)
-  }
+	objLen, _ := img.GetObjLen(id)
+	if objLen != 3 {
+		t.Fatal(objLen)
+	}
 
 	b.Truncate(0)
 	id, _ = img.Put(5, 20, bytes.NewReader(buf))
@@ -29,10 +29,10 @@ func TestImg(t *testing.T) {
 	if b.String() != "abcde" {
 		t.Fatal(b.String())
 	}
-  objLen, _ = img.GetObjLen(id)
-  if objLen != 5 {
-    t.Fatal(objLen)
-  }
+	objLen, _ = img.GetObjLen(id)
+	if objLen != 5 {
+		t.Fatal(objLen)
+	}
 
 	b.Truncate(0)
 	id, _ = img.Put(6, 30, bytes.NewReader(buf))
@@ -40,8 +40,8 @@ func TestImg(t *testing.T) {
 	if b.String() != "abcdef" {
 		t.Fatal(b.String())
 	}
-  objLen, _ = img.GetObjLen(id)
-  if objLen != 6 {
-    t.Fatal(objLen)
-  }
+	objLen, _ = img.GetObjLen(id)
+	if objLen != 6 {
+		t.Fatal(objLen)
+	}
 }
