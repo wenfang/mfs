@@ -5,10 +5,6 @@ import (
 	"io"
 )
 
-const (
-	IdxSize = 16
-)
-
 type Idx struct {
 	Offset  int64
 	ObjPos  uint64

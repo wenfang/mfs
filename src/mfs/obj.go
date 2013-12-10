@@ -33,8 +33,8 @@ var (
 	OEStoreHSeek    = errors.New("Obj StoreHead Seek Error")
 	OEStoreHWrite   = errors.New("Obj StoreHead Write Error")
 	OEStoreDSeek    = errors.New("Obj StoreData Seek Error")
-	OEStoreDWrite   = errors.New("Obj StoreData Write Error")
 	OEStoreDCopy    = errors.New("Obj StoreData Copy Error")
+	OEStoreDWrite   = errors.New("Obj StoreData Write Error")
 )
 
 func NewObj(f io.ReadSeeker, Offset int64) (*Obj, error) {
@@ -64,12 +64,10 @@ func NewObj(f io.ReadSeeker, Offset int64) (*Obj, error) {
 // 从f中获取对象内容到c
 func (obj *Obj) Retrive(f io.ReadSeeker, c io.Writer) error {
 	h := crc32.NewIEEE()
-	mw := io.MultiWriter(h, c)
-
 	if _, err := f.Seek(obj.Offset+ObjHeadSize, 0); err != nil {
 		return OERetriveSeek
 	}
-	if _, err := io.CopyN(mw, f, int64(obj.ObjLen)); err != nil {
+	if _, err := io.CopyN(io.MultiWriter(h, c), f, int64(obj.ObjLen)); err != nil {
 		return OERetrive
 	}
 
@@ -77,11 +75,9 @@ func (obj *Obj) Retrive(f io.ReadSeeker, c io.Writer) error {
 	if _, err := f.Read(buf); err != nil {
 		return OEReadTail
 	}
-
 	if string(buf[0:4]) != "OEND" {
 		return OEReadTailMagic
 	}
-
 	if h.Sum32() != uint32(ByteToUint64(buf[4:8])) {
 		return OEReadTailCRC
 	}
@@ -89,6 +85,7 @@ func (obj *Obj) Retrive(f io.ReadSeeker, c io.Writer) error {
 	return nil
 }
 
+// 存储对象头部到f
 func (obj *Obj) StoreHead(f io.WriteSeeker) error {
 	buf := make([]byte, ObjHeadSize)
 	n := copy(buf, []byte("OSTA"))
@@ -96,7 +93,7 @@ func (obj *Obj) StoreHead(f io.WriteSeeker) error {
 	n += copy(buf[n:], Uint64ToByte(obj.ObjSize)[2:])
 	n += copy(buf[n:], Uint64ToByte(uint64(obj.ObjType))[6:])
 	n += copy(buf[n:], Uint64ToByte(obj.ObjLen)[2:])
-	n += copy(buf[n:], Uint64ToByte(uint64(obj.ObjFlag))[6:])
+	copy(buf[n:], Uint64ToByte(uint64(obj.ObjFlag))[6:])
 
 	if _, err := f.Seek(obj.Offset, 0); err != nil {
 		return OEStoreHSeek
@@ -107,22 +104,20 @@ func (obj *Obj) StoreHead(f io.WriteSeeker) error {
 	return nil
 }
 
-// 从b(接收buf，可能在内存也可能是临时文件)写对象数据到f
+// 从b(接收buf，可能在内存也可能是临时文件)写对象数据到f，最后写对象尾部到f
 func (obj *Obj) StoreData(b io.Reader, f io.WriteSeeker) error {
 	h := crc32.NewIEEE()
-	mw := io.MultiWriter(h, f)
-
 	if _, err := f.Seek(obj.Offset+ObjHeadSize, 0); err != nil {
 		return OEStoreDSeek
 	}
-	if _, err := io.CopyN(mw, b, int64(obj.ObjLen)); err != nil {
+	if _, err := io.CopyN(io.MultiWriter(h, f), b, int64(obj.ObjLen)); err != nil {
 		return OEStoreDCopy
 	}
 	obj.CRC32 = h.Sum32()
 
 	buf := make([]byte, ObjTailSize)
 	n := copy(buf, []byte("OEND"))
-	n += copy(buf[n:], Uint64ToByte(uint64(obj.CRC32))[4:])
+	copy(buf[n:], Uint64ToByte(uint64(obj.CRC32))[4:])
 	if _, err := f.Write(buf); err != nil {
 		return OEStoreDWrite
 	}

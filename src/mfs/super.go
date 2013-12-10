@@ -6,11 +6,13 @@ import (
 )
 
 const (
-	SuperBlockSize = 4096
-	MIdxNum        = 4096
-	MIdxBlockSize  = 8 * MIdxNum
-	BlockAlign     = 1024
-	MIdxSize       = 1 << 20
+	SuperSize  = 4096
+	MIdxL1Num  = 4096
+	MIdxL1Size = 8 * MIdxL1Num
+	MIdxL2Num  = 1 << 20
+	IdxSize    = 16
+	MIdxL2Size = MIdxL2Num * IdxSize
+	BlockAlign = 1024
 )
 
 type Super struct {
@@ -18,7 +20,7 @@ type Super struct {
 	ImgLen    uint64
 	ImgSize   uint64
 	NextObjId uint32
-	MIdx      [MIdxNum]uint64
+	MIdx      [MIdxL1Num]uint64
 }
 
 var (
@@ -44,7 +46,7 @@ func NewSuper(f io.ReadSeeker) (*Super, error) {
 		return nil, SESeek
 	}
 
-	buf := make([]byte, SuperBlockSize+MIdxBlockSize)
+	buf := make([]byte, SuperSize+MIdxL1Size)
 	if _, err := f.Read(buf); err != nil {
 		return nil, SERead
 	}
@@ -62,8 +64,8 @@ func NewSuper(f io.ReadSeeker) (*Super, error) {
 	}
 	s.NextObjId = uint32(ByteToUint64(buf[20:24]))
 
-	for i := uint32(0); i <= s.NextObjId/MIdxSize; i = i + 1 {
-		s.MIdx[i] = ByteToUint64(buf[SuperBlockSize+i*8 : SuperBlockSize+i*8+8])
+	for i := uint32(0); i <= s.NextObjId/MIdxL2Num; i = i + 1 {
+		s.MIdx[i] = ByteToUint64(buf[SuperSize+i*8 : SuperSize+i*8+8])
 	}
 	return s, nil
 }
@@ -73,7 +75,7 @@ func (s *Super) GetIdxOff(objId uint32) (int64, error) {
 	if objId > s.NextObjId {
 		return 0, SEIdxOff
 	}
-	return int64(s.MIdx[objId/MIdxSize]) + int64(objId%MIdxSize)*IdxSize, nil
+	return int64(s.MIdx[objId/MIdxL2Num]) + int64(objId%MIdxL2Num)*IdxSize, nil
 }
 
 // 将ImgLen写入f
@@ -105,10 +107,10 @@ func (s *Super) StoreNextObjId(f io.WriteSeeker) error {
 		return SEObjIdWrite
 	}
 
-	if s.NextObjId%MIdxSize == 0 {
-		midx := s.NextObjId / MIdxSize
-		midxPos, imgLen := s.NewImgLen(MIdxSize * IdxSize)
-		if _, err := f.Seek(int64(SuperBlockSize+midx*8), 0); err != nil {
+	if s.NextObjId%MIdxL2Num == 0 {
+		midx := s.NextObjId / MIdxL2Num
+		midxPos, imgLen := s.NewImgLen(MIdxL2Size)
+		if _, err := f.Seek(int64(SuperSize+midx*8), 0); err != nil {
 			return SEMidxSeek
 		}
 		if _, err := f.Write(Uint64ToByte(midxPos)); err != nil {

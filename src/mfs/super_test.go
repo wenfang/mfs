@@ -20,7 +20,7 @@ func TestNewSuper(t *testing.T) {
 		t.Fatal("Create Error")
 	}
 
-	s.UpdateImgLen(f, 1000)
+	s.StoreImgLen(f)
 	markImgLen := s.ImgLen
 	s, err = NewSuper(f)
 	if s.ImgLen != markImgLen {
@@ -31,5 +31,5 @@ func TestNewSuper(t *testing.T) {
 func TestNewImgLen(t *testing.T) {
 	var s Super
 	s.ImgLen = 1024
-	t.Fatal(s.NewImgLen(34569234))
+	//t.Fatal(s.NewImgLen(34569234))
 }

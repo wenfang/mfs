@@ -3,7 +3,6 @@ package mfs
 import (
 	"bytes"
 	"errors"
-	"fmt"
 	"io"
 	"log"
 	"os"
@@ -214,7 +213,6 @@ func (img *Img) getObj(idx *Idx, fr *os.File) (*Obj, error) {
 	}
 
 	if idx.ObjType != obj.ObjType || idx.ObjLen != obj.ObjLen || idx.ObjFlag != obj.ObjFlag {
-		fmt.Println(idx, obj)
 		return nil, IEIdxObj
 	}
 	return obj, nil

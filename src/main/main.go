@@ -128,6 +128,11 @@ func mainHandle(c net.Conn) {
 	}
 	fields := strings.Fields(line)
 
+  if len(fields) == 0 {
+    io.WriteString(c, "+E Command Not Found\r\n")
+    return
+  }
+
 	if _, ok := Cmd[fields[0]]; !ok {
 		io.WriteString(c, "+E Command Not Found\r\n")
 		return
@@ -156,13 +161,17 @@ func main() {
     return
   }
 
-  conf.GetStr("", "listen")
+  laddr, err := conf.GetStr("", "listen")
+  if err != nil {
+    fmt.Println("[ERROR] ", err)
+    return
+  }
 
 	if img, err = mfs.NewImg("img"); err != nil {
 		log.Fatal("Open img Error")
 	}
 
-	l, err := net.Listen("tcp4", ":7879")
+	l, err := net.Listen("tcp4", laddr)
 	if err != nil {
 		log.Fatal(err)
 	}
