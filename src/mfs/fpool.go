@@ -5,22 +5,24 @@ import (
 )
 
 const (
-	FPoolSize = 32
+	fPoolSize = 32
 )
 
-type FPool struct {
+type FPool interface {
+  Alloc() *os.File
+  Free(*os.File)
+}
+
+type fPool struct {
 	ImgName string
 	Pool    chan *os.File
 }
 
-func NewFPool(ImgName string) *FPool {
-	p := new(FPool)
-	p.ImgName = ImgName
-	p.Pool = make(chan *os.File, FPoolSize)
-	return p
+func NewFPool(ImgName string) FPool {
+	return &fPool{ImgName, make(chan *os.File, fPoolSize)}
 }
 
-func (p *FPool) Alloc() *os.File {
+func (p *fPool) Alloc() *os.File {
 	var res *os.File
 	select {
 	case res = <-p.Pool:
@@ -30,7 +32,7 @@ func (p *FPool) Alloc() *os.File {
 	return res
 }
 
-func (p *FPool) Free(f *os.File) {
+func (p *fPool) Free(f *os.File) {
 	select {
 	case p.Pool <- f:
 	default:

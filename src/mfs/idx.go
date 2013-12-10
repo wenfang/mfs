@@ -14,18 +14,18 @@ type Idx struct {
 }
 
 var (
+	IdxErrRSeek = errors.New("Idx Read Seek Error")
 	IdxErrRead  = errors.New("Idx Read Error")
-	IdxErrSeek  = errors.New("Idx Seek Error")
+	IdxErrWSeek = errors.New("Idx Write Seek Error")
 	IdxErrWrite = errors.New("Idx Write Error")
 )
 
 // 从f中偏移量为Offset处读出Idx的内容
 func NewIdx(f io.ReadSeeker, Offset int64) (*Idx, error) {
-	if _, err := f.Seek(Offset, 0); err != nil {
-		return nil, IdxErrSeek
-	}
-
 	buf := make([]byte, IdxSize)
+	if _, err := f.Seek(Offset, 0); err != nil {
+		return nil, IdxErrRSeek
+	}
 	if _, err := f.Read(buf); err != nil {
 		return nil, IdxErrRead
 	}
@@ -48,7 +48,7 @@ func (idx *Idx) Store(f io.WriteSeeker) error {
 	copy(buf[14:16], Uint64ToByte(uint64(idx.ObjFlag))[6:])
 
 	if _, err := f.Seek(idx.Offset, 0); err != nil {
-		return IdxErrSeek
+		return IdxErrWSeek
 	}
 	if _, err := f.Write(buf); err != nil {
 		return IdxErrWrite

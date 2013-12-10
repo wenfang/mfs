@@ -37,6 +37,7 @@ var (
 	OEStoreDWrite   = errors.New("Obj StoreData Write Error")
 )
 
+// 从f的Offset位置读入数据，构造obj
 func NewObj(f io.ReadSeeker, Offset int64) (*Obj, error) {
 	if _, err := f.Seek(Offset, 0); err != nil {
 		return nil, OENewSeek
@@ -61,7 +62,7 @@ func NewObj(f io.ReadSeeker, Offset int64) (*Obj, error) {
 	return obj, nil
 }
 
-// 从f中获取对象内容到c
+// 从f中获取对象内容到c，检查crc校验
 func (obj *Obj) Retrive(f io.ReadSeeker, c io.Writer) error {
 	h := crc32.NewIEEE()
 	if _, err := f.Seek(obj.Offset+ObjHeadSize, 0); err != nil {

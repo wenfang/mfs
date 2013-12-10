@@ -19,7 +19,6 @@ const (
 )
 
 var (
-	IENewSuper = errors.New("Img New Super Error")
 	IEObjDel   = errors.New("Img Obj Deleted")
 	IEIdxObj   = errors.New("Img Idx Obj Not Match")
 )
@@ -41,7 +40,7 @@ type wreq struct {
 type Img struct {
 	ImgName string
 	Sup     *Super
-	pool    *FPool
+	pool    FPool
 	wchan   chan wreq
 }
 
@@ -98,7 +97,6 @@ func (img *Img) delObj(objId uint32, f io.WriteSeeker) (uint32, error) {
 	if err != nil {
 		return 0, err
 	}
-
 	obj, err := img.getObj(idx, fr)
 	if err != nil {
 		return 0, err
@@ -147,6 +145,7 @@ func (img *Img) updateObj(objId uint32, objLen uint64, b io.Reader, f io.WriteSe
 	return obj.ObjId, nil
 }
 
+// 写routine,单纯的执行put，update和del操作
 func (img *Img) wRoutine() {
 	fw, err := os.OpenFile(img.ImgName, os.O_RDWR, 0666)
 	if err != nil {
@@ -182,14 +181,19 @@ func NewImg(ImgName string) (*Img, error) {
 	var err error
 	img.Sup, err = NewSuper(fr)
 	if err != nil {
-		return nil, IENewSuper
+		return nil, err
 	}
 
 	go img.wRoutine()
 	return img, nil
 }
 
+// 根据objId获得索引，若已删除，返回错误
 func (img *Img) getIdx(objId uint32, fr *os.File) (*Idx, error) {
+  if objId >= img.Sup.NextObjId {
+    return nil, errors.New("Object Id Error")
+  }
+
 	offset, err := img.Sup.GetIdxOff(objId)
 	if err != nil {
 		return nil, err
@@ -206,6 +210,7 @@ func (img *Img) getIdx(objId uint32, fr *os.File) (*Idx, error) {
 	return idx, nil
 }
 
+// 根据索引结构，返回对象结构，若标志不匹配，返回错误
 func (img *Img) getObj(idx *Idx, fr *os.File) (*Obj, error) {
 	obj, err := NewObj(fr, int64(idx.ObjPos))
 	if err != nil {
